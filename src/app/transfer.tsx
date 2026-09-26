@@ -15,6 +15,7 @@ import type { TransactionType } from '@/store/types';
 import { fonts, radius, spacing, type } from '@/theme';
 import { currencySymbol, formatAmountInput, hasCents } from '@/utils/format';
 import { goBack } from '@/utils/navigation';
+import { amountIssue, amountLimits } from '@/utils/limits';
 import { useAction } from '@/utils/useAction';
 
 export default function TransferScreen() {
@@ -38,7 +39,11 @@ export default function TransferScreen() {
 
   const available = savedFor(goalId);
   const overdraft = kind === 'withdraw' && amount > available;
-  const canSubmit = amount > 0 && !overdraft;
+  const limits = amountLimits(currency);
+  // A withdrawal may take everything that's left even if it's below the minimum.
+  const issue = amount > 0 ? amountIssue(amount, currency, kind === 'withdraw' ? available : undefined) : null;
+  const invalid = overdraft || !!issue;
+  const canSubmit = amount > 0 && !invalid;
   const goal = goals.find((g) => g.id === goalId);
   const destination = goal ? goal.name : t('common.commonFund');
   const isDeposit = kind === 'deposit';
@@ -110,7 +115,7 @@ export default function TransferScreen() {
       <ScrollView contentContainerStyle={s.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={s.amountWrap}>
           <Text style={[s.currency, amount === 0 && s.muted]}>{currencySymbol(currency)}</Text>
-          <Text style={[s.amount, amount === 0 && s.muted, overdraft && { color: colors.danger }]} adjustsFontSizeToFit numberOfLines={1}>
+          <Text style={[s.amount, amount === 0 && s.muted, invalid && { color: colors.danger }]} adjustsFontSizeToFit numberOfLines={1}>
             {formatAmountInput(raw, currency)}
           </Text>
         </View>
@@ -118,6 +123,13 @@ export default function TransferScreen() {
           {overdraft
             ? t('transfer.overdraft', { amount: money(available) })
             : t('transfer.available', { dest: destination, amount: money(available) })}
+        </Text>
+        <Text style={[s.limits, issue && { color: colors.danger }]}>
+          {issue === 'tooSmall'
+            ? t('transfer.belowMin', { amount: money(limits.min) })
+            : issue === 'tooLarge'
+              ? t('transfer.aboveMax', { amount: money(limits.max) })
+              : t('transfer.limits', { min: money(limits.min), max: money(limits.max) })}
         </Text>
         {!isDeposit && others.length > 0 && (
           <View style={s.approvalNote}>
@@ -250,6 +262,7 @@ const useStyles = makeStyles(({ colors }) => ({
   currency: { fontFamily: fonts.bold, fontSize: 28, color: colors.text, marginTop: 12, marginRight: 4 },
   amount: { fontFamily: fonts.extrabold, fontSize: 68, color: colors.text, letterSpacing: -2.5 },
   muted: { color: colors.textSubtle },
+  limits: { ...type.small, fontSize: 12, color: colors.textSubtle, textAlign: 'center', marginTop: 2 },
   available: { ...type.small, color: colors.textMuted, textAlign: 'center', marginTop: spacing.xs },
   destsWrap: { marginHorizontal: -spacing.md, marginTop: spacing.lg },
   dests: { paddingHorizontal: spacing.md, gap: spacing.sm },

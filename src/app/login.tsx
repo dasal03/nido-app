@@ -124,6 +124,8 @@ function LoginForm({ createdEmail }: { createdEmail: string | null }) {
   const [password, setPassword] = useState('');
   const [bio, setBio] = useState<{ kind: BiometryKind; identifier: string } | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [resent, setResent] = useState(false);
+  const resend = useAction(backend.resendConfirmation);
   const { run, loading, error, setError } = useAction(async (creds: { identifier: string; password: string }, offer: boolean) => {
     await backend.login(creds);
     if (offer) await maybeOfferBiometrics(creds.identifier, creds.password);
@@ -198,6 +200,20 @@ function LoginForm({ createdEmail }: { createdEmail: string | null }) {
         <Text style={s.forgotText}>{t('reset.link')}</Text>
       </Pressable>
       <ErrorBanner message={error} />
+      {(error === t('errors.emailNotConfirmed') || !!createdEmail) && !!identifier && (
+        <Pressable
+          onPress={async () => {
+            setResent(false);
+            if (await resend.run(identifier)) setResent(true);
+          }}
+          disabled={resend.loading}
+          style={s.resend}
+          accessibilityRole="button">
+          <Icon name={resent ? 'check-circle' : 'mail'} size={16} color={resent ? colors.success : colors.accent} />
+          <Text style={[s.forgotText, resent && { color: colors.success }]}>{t(resent ? 'auth.resent' : 'auth.resend')}</Text>
+        </Pressable>
+      )}
+      {!!resend.error && <Text style={s.resendError}>{resend.error}</Text>}
       <Button
         label={t('auth.loginCta')}
         iconRight="chevron"
@@ -257,7 +273,7 @@ function RegisterWizard({ onCreated }: { onCreated: (email: string) => void }) {
   const [attempted, setAttempted] = useState<Record<number, boolean>>({});
   const [picker, setPicker] = useState<'country' | 'phoneCountry' | 'document' | 'gender' | 'birthday' | null>(null);
   /** Last availability answer from the server, tied to the username it was asked for. */
-  const [usernameCheck, setUsernameCheck] = useState<{ username: string; available: boolean } | null>(null);
+  const [usernameCheck, setUsernameCheck] = useState<{ username: string; email: string; available: boolean } | null>(null);
   const [documentTaken, setDocumentTaken] = useState(false);
   const [checkingStep, setCheckingStep] = useState(false);
   // Only used for its error state; the call itself needs the `needsConfirmation` result.
@@ -273,24 +289,28 @@ function RegisterWizard({ onCreated }: { onCreated: (email: string) => void }) {
     if (validateUsername(values.username)) return;
     let alive = true;
     const username = values.username;
+    // With the email, retrying a sign-up that was never confirmed can reuse its own username.
+    const email = validateEmail(values.email) ? '' : values.email.trim().toLowerCase();
     const id = setTimeout(() => {
       backend
-        .isUsernameAvailable(username)
-        .then((available) => alive && setUsernameCheck({ username, available }))
+        .isUsernameAvailable(username, email || undefined)
+        .then((available) => alive && setUsernameCheck({ username, email, available }))
         .catch(() => {});
     }, 450);
     return () => {
       alive = false;
       clearTimeout(id);
     };
-  }, [values.username]);
+  }, [values.username, values.email]);
   const usernameState: 'checking' | 'available' | 'taken' | null = validateUsername(values.username)
     ? null
     : usernameCheck?.username !== values.username
       ? 'checking'
       : usernameCheck.available
         ? 'available'
-        : 'taken';
+        : usernameCheck.email !== (validateEmail(values.email) ? '' : values.email.trim().toLowerCase())
+          ? 'checking'
+          : 'taken';
 
   const errors: Record<Field, FieldError> = useMemo(
     () => ({
@@ -329,7 +349,9 @@ function RegisterWizard({ onCreated }: { onCreated: (email: string) => void }) {
     if (step === 1) {
       // Check the identity document isn't already registered before moving on.
       setCheckingStep(true);
-      const available = await backend.isDocumentAvailable(values.country, values.documentType, values.documentNumber).catch(() => true);
+      const available = await backend
+        .isDocumentAvailable(values.country, values.documentType, values.documentNumber, values.email)
+        .catch(() => true);
       setCheckingStep(false);
       if (!available) {
         setDocumentTaken(true);
@@ -664,6 +686,8 @@ const useStyles = makeStyles(({ colors, elevation }) => ({
   stepCount: { ...type.small, color: colors.textMuted },
   stepBars: { flexDirection: 'row', gap: 6 },
   stepBar: { flex: 1, height: 5, borderRadius: 3 },
+  resend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 4 },
+  resendError: { ...type.small, color: colors.danger, textAlign: 'center' },
   forgot: { alignSelf: 'flex-end', marginTop: -6 },
   forgotText: { ...type.smallStrong, color: colors.accent },
   terms: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2, paddingVertical: 4 },

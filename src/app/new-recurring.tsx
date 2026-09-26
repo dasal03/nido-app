@@ -10,7 +10,8 @@ import { ensureNotificationPermission } from '@/services/notifications';
 import { useSavings } from '@/store/SavingsContext';
 import type { Frequency } from '@/store/types';
 import { fonts, radius, spacing, type } from '@/theme';
-import { currencySymbol, formatAmountInput } from '@/utils/format';
+import { currencySymbol, formatAmountInput, formatMoney } from '@/utils/format';
+import { amountIssue, amountLimits } from '@/utils/limits';
 import { goBack } from '@/utils/navigation';
 import { useAction } from '@/utils/useAction';
 
@@ -34,6 +35,9 @@ export default function NewRecurringScreen() {
   const [start, setStart] = useState<Start>('today');
   const create = useAction(backend.addRecurring);
   const amount = Number(digits || 0);
+  const limits = amountLimits(currency);
+  const issue = amount > 0 ? amountIssue(amount, currency) : null;
+  const money = (n: number) => formatMoney(n, currency);
 
   const submit = async () => {
     if (await create.run({ amount, goalId, frequency, startDate: startDate(start) })) {
@@ -61,6 +65,13 @@ export default function NewRecurringScreen() {
             autoFocus
           />
         </View>
+        <Text style={[s.limits, issue && { color: colors.danger }]}>
+          {issue === 'tooSmall'
+            ? t('transfer.belowMin', { amount: money(limits.min) })
+            : issue === 'tooLarge'
+              ? t('transfer.aboveMax', { amount: money(limits.max) })
+              : t('transfer.limits', { min: money(limits.min), max: money(limits.max) })}
+        </Text>
 
         <Text style={s.label}>{t('recurring.frequency')}</Text>
         <Segmented<Frequency>
@@ -75,9 +86,20 @@ export default function NewRecurringScreen() {
 
         <Text style={s.label}>{t('recurring.destination')}</Text>
         <View style={s.chips}>
-          <Chip label={t('common.commonFund')} selected={goalId === null} onPress={() => setGoalId(null)} leading={<GoalIcon icon="wallet" color="#5B6475" size={22} />} />
+          <Chip
+            label={t('common.commonFund')}
+            selected={goalId === null}
+            onPress={() => setGoalId(null)}
+            leading={<GoalIcon icon="wallet" color="#5B6475" size={22} />}
+          />
           {goals.map((g) => (
-            <Chip key={g.id} label={g.name} selected={goalId === g.id} onPress={() => setGoalId(g.id)} leading={<GoalIcon icon={g.icon} color={g.color} size={22} />} />
+            <Chip
+              key={g.id}
+              label={g.name}
+              selected={goalId === g.id}
+              onPress={() => setGoalId(g.id)}
+              leading={<GoalIcon icon={g.icon} color={g.color} size={22} />}
+            />
           ))}
         </View>
 
@@ -90,13 +112,14 @@ export default function NewRecurringScreen() {
         <ErrorBanner message={create.error} />
       </ScrollView>
       <View style={s.footer}>
-        <Button label={t('recurring.create')} icon="repeat" onPress={submit} loading={create.loading} disabled={amount <= 0} />
+        <Button label={t('recurring.create')} icon="repeat" onPress={submit} loading={create.loading} disabled={amount <= 0 || !!issue} />
       </View>
     </SafeAreaView>
   );
 }
 
 const useStyles = makeStyles(({ colors }) => ({
+  limits: { ...type.small, fontSize: 12, color: colors.textSubtle, marginTop: -6 },
   safe: { flex: 1, backgroundColor: colors.surface },
   content: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.sm },
   label: { ...type.h3, color: colors.text, marginTop: spacing.md, marginBottom: 4 },

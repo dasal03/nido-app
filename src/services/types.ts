@@ -1,4 +1,5 @@
 import type { TranslationKey } from '@/i18n/es';
+import { amountIssue } from '@/utils/limits';
 import { validateBirthday, validateDocument, validateEmail, validateName, validatePassword, type FieldError } from '@/utils/validation';
 import type { Couple, Frequency, Goal, RecurringRule, Transaction, User } from '@/store/types';
 
@@ -7,6 +8,13 @@ export interface Db {
   users: Record<string, User>;
   couples: Record<string, Couple>;
   sessionUserId: string | null;
+}
+
+/** Throws when an amount is outside the currency's limits (see `utils/limits`). */
+export function checkAmount(amount: number, currency: string, wholeBalance?: number) {
+  if (!(amount > 0)) throw new BackendError('errors.amountPositive');
+  const issue = amountIssue(amount, currency, wholeBalance);
+  if (issue) throw new BackendError(issue === 'tooSmall' ? 'errors.amountTooSmall' : 'errors.amountTooLarge');
 }
 
 export type ErrorKey = Extract<TranslationKey, `errors.${string}` | `validation.${string}`>;
@@ -41,8 +49,11 @@ export interface Backend {
 
   /** Creates the account. `needsConfirmation` is true when the user must confirm their email before signing in. */
   register(input: RegisterInput): Promise<{ needsConfirmation: boolean }>;
-  isUsernameAvailable(username: string): Promise<boolean>;
-  isDocumentAvailable(country: string, type: string, number: string): Promise<boolean>;
+  /** `email` lets a retried sign-up reuse the username/document of its own unconfirmed account. */
+  isUsernameAvailable(username: string, email?: string): Promise<boolean>;
+  isDocumentAvailable(country: string, type: string, number: string, email?: string): Promise<boolean>;
+  /** Sends the sign-up confirmation email again (to the email, or the account of a username). */
+  resendConfirmation(identifier: string): Promise<void>;
   login(input: { identifier: string; password: string }): Promise<void>;
   logout(): Promise<void>;
   updateProfile(patch: Partial<Pick<User, 'name' | 'username' | 'phone' | 'birthday' | 'photo' | 'country' | 'gender'>>): Promise<void>;

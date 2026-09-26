@@ -46,7 +46,7 @@ src/
 
 ## Supabase
 
-1. Ejecuta en orden en el SQL Editor de Supabase: `supabase/schema.sql` y las migraciones `supabase/migrations/002_identity.sql`, `003_groups_approvals.sql`, `004_delete_account.sql` y `005_family_codes_currency.sql`.
+1. Ejecuta en orden en el SQL Editor de Supabase: `supabase/schema.sql` y las migraciones `supabase/migrations/002_identity.sql`, `003_groups_approvals.sql`, `004_delete_account.sql`, `005_family_codes_currency.sql` y `006_limits_signup.sql`.
 2. Copia `.env.example` a `.env.local` con la URL y la anon key del proyecto.
 3. En Authentication → URL Configuration agrega `nido://**` a las Redirect URLs.
 4. En Authentication → Email Templates → **Reset Password**, incluye el código `{{ .Token }}` en el correo (la app pide ese código de 6 dígitos para cambiar la contraseña).

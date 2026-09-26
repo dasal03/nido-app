@@ -21,7 +21,7 @@ export const es = {
   'errors.nameRequired': 'Escribe tu nombre.',
   'errors.invalidEmail': 'El correo no es válido.',
   'errors.weakPassword': 'La contraseña debe tener al menos 6 caracteres.',
-  'errors.emailTaken': 'Ya existe una cuenta con ese correo.',
+  'errors.emailTaken': 'Ya existe una cuenta confirmada con ese correo. Inicia sesión o usa "¿Olvidaste tu contraseña?".',
   'errors.badCredentials': 'Correo o contraseña incorrectos.',
   'errors.ownCode': 'Ese es tu propio código. Ingresa el de tu pareja.',
   'errors.codeNotFound': 'No encontramos a nadie con ese código.',
@@ -660,6 +660,14 @@ export const es = {
   'notifPrompt.openSettings': 'Abrir ajustes',
   'notifPrompt.title': 'Activa las notificaciones',
   'settings.codeHint': 'toca para ver el QR',
+  'errors.amountTooSmall': 'El monto está por debajo del mínimo permitido.',
+  'errors.amountTooLarge': 'El monto supera el máximo permitido por movimiento.',
+  'errors.tooManyEmails': 'Enviamos demasiados correos seguidos. Espera unos minutos e intenta de nuevo.',
+  'transfer.limits': 'Mínimo {min} · Máximo {max}',
+  'transfer.belowMin': 'El mínimo es {amount}',
+  'transfer.aboveMax': 'El máximo por movimiento es {amount}',
+  'auth.resend': 'Reenviar correo de confirmación',
+  'auth.resent': 'Te enviamos otro correo. Revisa también spam.',
 } as const;
 
 export type TranslationKey = keyof typeof es;

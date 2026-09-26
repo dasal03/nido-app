@@ -10,11 +10,13 @@ import type { PostgrestError, RealtimeChannel } from '@supabase/supabase-js';
 import { buildDemoData } from '@/store/seed';
 import type { ApprovalRequest, Couple, Frequency, Goal, RecurringRule, Transaction, User } from '@/store/types';
 import { validatePassword } from '@/utils/validation';
+import { nestBalance } from '@/utils/settlement';
 import { supabase } from './supabase';
 import {
   BackendError,
   EMAIL_RE,
   advanceDate,
+  checkAmount,
   checkPhone,
   checkRegistration,
   checkUsername,
@@ -62,6 +64,8 @@ const RPC_ERRORS: Record<string, ErrorKey> = {
   insufficient_funds: 'errors.insufficientFunds',
   request_pending: 'errors.requestPending',
   active_nests: 'errors.activeNests',
+  amount_too_small: 'errors.amountTooSmall',
+  amount_too_large: 'errors.amountTooLarge',
 };
 
 /** Translates Supabase/Postgres errors into the app's translated error keys. */
@@ -71,6 +75,7 @@ function fail(error: { message?: string; code?: string } | null): never {
   if (error?.code === '23505' && message.includes('username')) throw new BackendError('errors.usernameTaken');
   if (/invalid login credentials/i.test(message)) throw new BackendError('errors.badCredentials');
   if (/token has expired|otp.*(expired|invalid)|invalid.*otp/i.test(message)) throw new BackendError('errors.resetCode');
+  if (/rate limit|only request this after|too many/i.test(message)) throw new BackendError('errors.tooManyEmails');
   if (/email not confirmed/i.test(message)) throw new BackendError('errors.emailNotConfirmed');
   if (/already registered|already been registered/i.test(message)) throw new BackendError('errors.emailTaken');
   if (/password/i.test(message) && /least|short|weak/i.test(message)) throw new BackendError('errors.weakPassword');
@@ -312,8 +317,11 @@ export const supabaseBackend: Backend = {
   async register(input) {
     const sb = client();
     const { name, username, email, phone, password, country, birthday, gender, documentType, documentNumber } = checkRegistration(input);
-    if (!(await this.isUsernameAvailable(username))) throw new BackendError('errors.usernameTaken');
-    if (!(await this.isDocumentAvailable(country, documentType, documentNumber))) throw new BackendError('errors.documentTaken');
+    // A confirmed account with this email must sign in instead; an unconfirmed one is re-sent its email.
+    const registered = await sb.rpc('email_registered', { p_email: email });
+    if (!registered.error && registered.data) throw new BackendError('errors.emailTaken');
+    if (!(await this.isUsernameAvailable(username, email))) throw new BackendError('errors.usernameTaken');
+    if (!(await this.isDocumentAvailable(country, documentType, documentNumber, email))) throw new BackendError('errors.documentTaken');
     // The confirmation email links back into the app (add `nido://**` to Supabase's Redirect URLs).
     const emailRedirectTo = Linking.createURL('login');
     const { data, error } = await sb.auth.signUp({
@@ -332,12 +340,37 @@ export const supabaseBackend: Backend = {
     return { needsConfirmation: false };
   },
 
-  async isUsernameAvailable(username) {
-    return !!check(await client().rpc('username_available', { p_username: normalizeUsername(username) }));
+  async isUsernameAvailable(username, email) {
+    const sb = client();
+    const p_username = normalizeUsername(username);
+    // The email-aware version comes with migration 006; fall back to the original one before it's applied.
+    if (email) {
+      const res = await sb.rpc('username_available', { p_username, p_email: normalizeEmail(email) });
+      if (!res.error) return !!res.data;
+    }
+    return !!check(await sb.rpc('username_available', { p_username }));
   },
 
-  async isDocumentAvailable(country, type, number) {
-    return !!check(await client().rpc('document_available', { p_country: country, p_type: type, p_number: number.trim().toUpperCase() }));
+  async isDocumentAvailable(country, type, number, email) {
+    const sb = client();
+    const params = { p_country: country, p_type: type, p_number: number.trim().toUpperCase() };
+    if (email) {
+      const res = await sb.rpc('document_available', { ...params, p_email: normalizeEmail(email) });
+      if (!res.error) return !!res.data;
+    }
+    return !!check(await sb.rpc('document_available', params));
+  },
+
+  async resendConfirmation(identifier) {
+    const sb = client();
+    let email = normalizeEmail(identifier);
+    if (!EMAIL_RE.test(email)) {
+      const found = check(await sb.rpc('email_for_username', { p_username: normalizeUsername(email) }));
+      if (!found) return;
+      email = found as string;
+    }
+    const { error } = await sb.auth.resend({ type: 'signup', email, options: { emailRedirectTo: Linking.createURL('login') } });
+    if (error) fail(error);
   },
 
   async login({ identifier, password }) {
@@ -432,7 +465,7 @@ export const supabaseBackend: Backend = {
 
   async requestWithdraw({ amount, goalId, note }) {
     const { couple } = requireCouple();
-    if (!(amount > 0)) throw new BackendError('errors.amountPositive');
+    checkAmount(amount, couple.currency, nestBalance(couple, goalId));
     await write(
       client().rpc('create_request', { p_couple: couple.id, p_kind: 'withdraw', p_amount: amount, p_goal: goalId, p_note: note }),
     );
@@ -530,7 +563,9 @@ export const supabaseBackend: Backend = {
 
   async addTransaction(tx) {
     const { user, couple } = requireCouple();
-    if (!(tx.amount > 0)) throw new BackendError('errors.amountPositive');
+    if (tx.recurringId) {
+      if (!(tx.amount > 0)) throw new BackendError('errors.amountPositive');
+    } else checkAmount(tx.amount, couple.currency);
     await write(
       client()
         .from('transactions')
@@ -566,7 +601,7 @@ export const supabaseBackend: Backend = {
 
   async addRecurring(input) {
     const { user, couple } = requireCouple();
-    if (!(input.amount > 0)) throw new BackendError('errors.amountPositive');
+    checkAmount(input.amount, couple.currency);
     const row = await write(
       client()
         .from('recurring_rules')

@@ -15,6 +15,7 @@ import {
   type RegisterInput,
   checkPhone,
   checkRegistration,
+  checkAmount,
   checkUsername,
   convertAmount,
   EMAIL_RE,
@@ -321,6 +322,10 @@ export const localBackend: Backend = {
     return !Object.values(db.users).some((u) => u.username === normalizeUsername(username));
   },
 
+  async resendConfirmation() {
+    // Local accounts don't need email confirmation.
+  },
+
   async isDocumentAvailable(country, type, number) {
     const n = number.trim().toUpperCase();
     return !Object.values(db.users).some((u) => u.country === country && u.documentType === type && u.documentNumber === n);
@@ -480,8 +485,9 @@ export const localBackend: Backend = {
 
   async requestWithdraw({ amount, goalId, note }) {
     const { couple } = requireCouple();
-    if (!(amount > 0)) throw new BackendError('errors.amountPositive');
-    if (amount > nestBalance(couple, goalId)) throw new BackendError('errors.insufficientFunds');
+    const available = nestBalance(couple, goalId);
+    checkAmount(amount, couple.currency, available);
+    if (amount > available) throw new BackendError('errors.insufficientFunds');
     createRequest(couple, { kind: 'withdraw', amount, goalId, note: note.trim() });
   },
 
@@ -574,7 +580,9 @@ export const localBackend: Backend = {
   /** Records a movement on behalf of the signed-in user. */
   async addTransaction(tx) {
     const { user, couple } = requireCouple();
-    if (!(tx.amount > 0)) throw new BackendError('errors.amountPositive');
+    if (tx.recurringId) {
+      if (!(tx.amount > 0)) throw new BackendError('errors.amountPositive');
+    } else checkAmount(tx.amount, couple.currency);
     const entry: Transaction = {
       ...tx,
       type: 'deposit',
@@ -614,7 +622,7 @@ export const localBackend: Backend = {
   /** Schedules a contribution by the signed-in user, starting on `startDate`. */
   async addRecurring(input: { amount: number; goalId: string | null; frequency: Frequency; startDate: string }) {
     const { user, couple } = requireCouple();
-    if (!(input.amount > 0)) throw new BackendError('errors.amountPositive');
+    checkAmount(input.amount, couple.currency);
     const rule: RecurringRule = {
       id: Crypto.randomUUID(),
       by: user.id,

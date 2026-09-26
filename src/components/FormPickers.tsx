@@ -142,7 +142,14 @@ export function PhoneField({
           !!success && { borderColor: colors.success },
           !!error && { borderColor: colors.danger },
         ]}>
-        <PressableScale onPress={onPressCountry} haptic={false} scaleTo={0.95} style={s.dialButton} accessibilityLabel={c.name.es}>
+        <PressableScale
+          onPress={onPressCountry}
+          haptic={false}
+          scaleTo={0.95}
+          containerStyle={s.dialContainer}
+          style={s.dialButton}
+          accessibilityRole="button"
+          accessibilityLabel={c.name.es}>
           <Text style={{ fontSize: 20 }}>{c.flag}</Text>
           <Text style={s.dial}>{c.dial}</Text>
           <Icon name="chevron-down" size={14} color={colors.textSubtle} />
@@ -335,6 +342,7 @@ const useStyles = makeStyles(({ colors }) => ({
     paddingRight: spacing.md - 2,
     gap: spacing.sm,
   },
+  dialContainer: { flexShrink: 0, alignSelf: 'stretch', justifyContent: 'center' },
   dialButton: {
     flexDirection: 'row',
     alignItems: 'center',
