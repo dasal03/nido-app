@@ -13,7 +13,8 @@ import { useEffect } from 'react';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { LockOverlay } from '@/components/LockOverlay';
+import { BiometricOffer } from '@/components/BiometricOffer';
+import { ConfirmProvider } from '@/components/ConfirmDialog';
 import { CelebrationWatcher } from '@/game/Celebrations';
 import { NotificationSync } from '@/game/NotificationSync';
 import { PreferencesProvider, useTheme } from '@/providers/Preferences';
@@ -54,7 +55,7 @@ function RootStack() {
       </Stack>
       {linked && <CelebrationWatcher />}
       {linked && <NotificationSync />}
-      {user && <LockOverlay />}
+      {user && <BiometricOffer />}
     </View>
   );
 }
@@ -78,7 +79,9 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <PreferencesProvider>
         <AppProvider>
-          <RootStack />
+          <ConfirmProvider>
+            <RootStack />
+          </ConfirmProvider>
         </AppProvider>
       </PreferencesProvider>
     </SafeAreaProvider>

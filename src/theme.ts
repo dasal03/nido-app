@@ -1,4 +1,4 @@
-import { Platform, StyleSheet, type ViewStyle } from 'react-native';
+import { StyleSheet, type ViewStyle } from 'react-native';
 
 /** Semantic color tokens. Screens never use raw hex values, so both themes stay consistent. */
 export interface ThemeColors {
@@ -27,6 +27,9 @@ export interface ThemeColors {
   coupleGradient: readonly [string, string];
   onHero: string;
 }
+
+/** Avatar colors per member, in join order: you, then the partner, then the rest of a family. */
+export const memberPalette = (c: ThemeColors) => [c.me, c.partner, '#F59F00', '#12B886', '#8B5CF6', '#06B6D4', '#E8590C'];
 
 const light: ThemeColors = {
   bg: '#F4F6FA',
@@ -89,10 +92,9 @@ export interface Theme {
   elevation: ViewStyle;
 }
 
-const lightShadow: ViewStyle = Platform.select({
-  web: { boxShadow: '0 1px 2px rgba(10,20,51,0.04), 0 8px 24px rgba(10,20,51,0.06)' } as ViewStyle,
-  default: { shadowColor: '#0A1433', shadowOpacity: 0.07, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
-});
+// `boxShadow` renders the same soft shadow on iOS, Android (new architecture) and web. Android's
+// `elevation` drew grey, square-looking edges around rounded cards.
+const lightShadow: ViewStyle = { boxShadow: '0px 1px 2px rgba(10, 20, 51, 0.05), 0px 6px 18px rgba(10, 20, 51, 0.07)' };
 
 export const lightTheme: Theme = { dark: false, colors: light, elevation: lightShadow };
 export const darkTheme: Theme = {

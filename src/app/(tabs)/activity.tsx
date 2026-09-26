@@ -9,28 +9,18 @@ import { TransactionRow } from '@/components/TransactionRow';
 import { ExportSheet } from '@/components/ExportSheet';
 import { Chip, EmptyState, IconButton, TabHeader } from '@/components/ui';
 import { makeStyles, useT, useTheme } from '@/providers/Preferences';
-import { useMoney, useSavings } from '@/store/SavingsContext';
+import { firstName, useMoney, useSavings } from '@/store/SavingsContext';
 import type { Transaction } from '@/store/types';
 import { radius, spacing, type } from '@/theme';
 import { formatDayLabel } from '@/utils/format';
 import { goBackToHome } from '@/utils/navigation';
 
-type Filter = 'all' | 'me' | 'partner' | 'deposit' | 'withdraw';
+/** 'all', a movement type, or a member's user id. */
+type Filter = 'all' | 'deposit' | 'withdraw' | (string & {});
 
-function matches(filter: Filter, meId: string) {
-  return (tx: Transaction) => {
-    switch (filter) {
-      case 'all':
-        return true;
-      case 'me':
-        return tx.by === meId;
-      case 'partner':
-        return tx.by !== meId;
-      case 'deposit':
-      case 'withdraw':
-        return tx.type === filter;
-    }
-  };
+function matches(filter: Filter) {
+  return (tx: Transaction) =>
+    filter === 'all' ? true : filter === 'deposit' || filter === 'withdraw' ? tx.type === filter : tx.by === filter;
 }
 
 export default function ActivityScreen() {
@@ -38,13 +28,13 @@ export default function ActivityScreen() {
   const { colors } = useTheme();
   const { t, locale } = useT();
   const tabBarSpace = useTabBarSpace();
-  const { transactions, me, partner } = useSavings();
+  const { transactions, me, others, memberColor } = useSavings();
   const money = useMoney();
   const [filter, setFilter] = useState<Filter>('all');
   const [exporting, setExporting] = useState(false);
 
   const { sections, totalIn, totalOut } = useMemo(() => {
-    const list = transactions.filter(matches(filter, me.id));
+    const list = transactions.filter(matches(filter));
     const labels = { today: t('date.today'), yesterday: t('date.yesterday') };
     const groups = new Map<string, Transaction[]>();
     for (const tx of list) {
@@ -56,7 +46,7 @@ export default function ActivityScreen() {
       totalIn: list.filter((tx) => tx.type === 'deposit').reduce((sum, tx) => sum + tx.amount, 0),
       totalOut: list.filter((tx) => tx.type === 'withdraw').reduce((sum, tx) => sum + tx.amount, 0),
     };
-  }, [transactions, filter, me.id, t, locale]);
+  }, [transactions, filter, t, locale]);
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
@@ -70,13 +60,21 @@ export default function ActivityScreen() {
       <View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filters}>
           <Chip label={t('activity.all')} selected={filter === 'all'} onPress={() => setFilter('all')} />
-          <Chip label={t('activity.me')} selected={filter === 'me'} onPress={() => setFilter('me')} leading={<Avatar user={me} color={colors.me} size={20} />} />
           <Chip
-            label={partner.name}
-            selected={filter === 'partner'}
-            onPress={() => setFilter('partner')}
-            leading={<Avatar user={partner} color={colors.partner} size={20} />}
+            label={t('activity.me')}
+            selected={filter === me.id}
+            onPress={() => setFilter(me.id)}
+            leading={<Avatar user={me} color={colors.me} size={20} />}
           />
+          {others.map((m) => (
+            <Chip
+              key={m.id}
+              label={firstName(m.name)}
+              selected={filter === m.id}
+              onPress={() => setFilter(m.id)}
+              leading={<Avatar user={m} color={memberColor(m.id)} size={20} />}
+            />
+          ))}
           <Chip label={t('activity.deposits')} selected={filter === 'deposit'} onPress={() => setFilter('deposit')} />
           <Chip label={t('activity.withdrawals')} selected={filter === 'withdraw'} onPress={() => setFilter('withdraw')} />
         </ScrollView>

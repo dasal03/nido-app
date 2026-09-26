@@ -57,7 +57,8 @@
         {
           "color": "#0A1F5C"
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "scheme": "nido",
     "owner": "diegoasp01s-team",

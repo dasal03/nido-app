@@ -2,7 +2,7 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from '@/providers/Preferences';
 import type { User } from '@/store/types';
-import { fonts } from '@/theme';
+import { fonts, memberPalette } from '@/theme';
 import { initials } from '@/utils/format';
 
 type AvatarUser = Pick<User, 'name' | 'photo'>;
@@ -25,15 +25,37 @@ export function Avatar({ user, color, size = 40, ring }: { user: AvatarUser; col
   );
 }
 
-export function CoupleAvatars({ me, partner, size = 40, ring }: { me: AvatarUser; partner: AvatarUser; size?: number; ring?: string }) {
+/** Overlapping avatars of a nest's members (up to `max`, then "+n"). Colors follow the join order. */
+export function NestAvatars({ users, size = 40, ring, max = 3 }: { users: AvatarUser[]; size?: number; ring?: string; max?: number }) {
   const { colors } = useTheme();
   const border = ring ?? colors.bg;
+  const palette = memberPalette(colors);
+  const shown = users.slice(0, users.length > max ? max - 1 : max);
+  const extra = users.length - shown.length;
   return (
     <View style={{ flexDirection: 'row' }}>
-      <Avatar user={me} color={colors.me} size={size} ring={border} />
-      <View style={{ marginLeft: -size * 0.3 }}>
-        <Avatar user={partner} color={colors.partner} size={size} ring={border} />
-      </View>
+      {shown.map((u, i) => (
+        <View key={i} style={i > 0 && { marginLeft: -size * 0.3 }}>
+          <Avatar user={u} color={palette[i % palette.length]} size={size} ring={border} />
+        </View>
+      ))}
+      {extra > 0 && (
+        <View
+          style={[
+            styles.avatar,
+            {
+              marginLeft: -size * 0.3,
+              width: size,
+              height: size,
+              borderRadius: size / 2,
+              borderWidth: 2.5,
+              borderColor: border,
+              backgroundColor: colors.surfaceAlt,
+            },
+          ]}>
+          <Text style={[styles.initials, { fontSize: size * 0.34, color: colors.textMuted }]}>+{extra}</Text>
+        </View>
+      )}
     </View>
   );
 }

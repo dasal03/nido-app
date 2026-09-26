@@ -11,7 +11,17 @@ import { PressableScale } from './ui';
 export type PhotoAction = 'library' | 'camera' | 'remove';
 
 /** Bottom sheet to choose where the profile photo comes from. */
-export function PhotoSheet({ visible, user, onClose, onSelect }: { visible: boolean; user: User; onClose: () => void; onSelect: (action: PhotoAction) => void }) {
+export function PhotoSheet({
+  visible,
+  user,
+  onClose,
+  onSelect,
+}: {
+  visible: boolean;
+  user: User;
+  onClose: () => void;
+  onSelect: (action: PhotoAction) => void;
+}) {
   const s = useStyles();
   const { colors } = useTheme();
   const { t } = useT();
@@ -58,8 +68,9 @@ const useStyles = makeStyles(({ colors }) => ({
   title: { ...type.h2, color: colors.text },
   subtitle: { ...type.small, color: colors.textMuted, marginTop: 2 },
   tiles: { flexDirection: 'row', gap: spacing.sm + 4, alignItems: 'stretch' },
+  // flexGrow (not flex: 1) so the tile keeps its content height and both tiles match the taller one.
   tile: {
-    flex: 1,
+    flexGrow: 1,
     backgroundColor: colors.surfaceAlt,
     borderRadius: radius.md,
     padding: spacing.md,

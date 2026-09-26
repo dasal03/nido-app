@@ -19,6 +19,7 @@ export function SplitCard() {
   const { couple, me, partner, byMember } = useSavings();
   const money = useMoney();
   const [editing, setEditing] = useState(false);
+  if (!partner) return null;
   const myShare = couple.split?.[me.id] ?? 50;
   const total = byMember[me.id] + byMember[partner.id];
   const diff = byMember[me.id] - (total * myShare) / 100;
@@ -104,7 +105,7 @@ function SplitSheet({ visible, initial, onClose }: { visible: boolean; initial: 
             {mine}% · {100 - mine}%
           </Text>
           <Text style={s.who}>
-            {me.name} · {partner.name}
+            {me.name} · {partner?.name}
           </Text>
         </View>
         <PressableScale onPress={() => step(5)} style={s.stepButton} scaleTo={0.88} accessibilityLabel="+5%">
@@ -122,6 +123,7 @@ function SplitSheet({ visible, initial, onClose }: { visible: boolean; initial: 
         icon="check"
         style={{ marginTop: spacing.lg }}
         onPress={async () => {
+          if (!partner) return;
           await backend.setSplit(mine === 50 ? null : { [me.id]: mine, [partner.id]: 100 - mine });
           tap('success');
           onClose();
@@ -145,7 +147,14 @@ const useStyles = makeStyles(({ colors }) => ({
   sheetTitle: { ...type.h2, color: colors.text },
   sheetBody: { ...type.small, color: colors.textMuted, marginTop: 4, lineHeight: 19 },
   stepper: { flexDirection: 'row', alignItems: 'center', marginVertical: spacing.lg },
-  stepButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
+  stepButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   big: { fontFamily: fonts.extrabold, fontSize: 30, color: colors.text },
   who: { ...type.small, color: colors.textMuted },
   presets: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },

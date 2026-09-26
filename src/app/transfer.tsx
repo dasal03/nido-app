@@ -10,7 +10,7 @@ import { Keypad, applyKey } from '@/components/Keypad';
 import { Button, Chip, ErrorBanner, ScreenHeader, Segmented, tap } from '@/components/ui';
 import { makeStyles, useT, useTheme } from '@/providers/Preferences';
 import { backend } from '@/services/backend';
-import { useMoney, useSavings } from '@/store/SavingsContext';
+import { firstName, joinNames, useMoney, useSavings } from '@/store/SavingsContext';
 import type { TransactionType } from '@/store/types';
 import { fonts, radius, spacing, type } from '@/theme';
 import { currencySymbol, formatAmountInput, hasCents } from '@/utils/format';
@@ -22,17 +22,20 @@ export default function TransferScreen() {
   const { colors, dark } = useTheme();
   const { t } = useT();
   const params = useLocalSearchParams<{ type?: string; goalId?: string }>();
-  const { goals, currency, savedFor } = useSavings();
+  const { goals, currency, savedFor, couple, others } = useSavings();
   const money = useMoney();
 
   const [kind, setKind] = useState<TransactionType>(params.type === 'withdraw' ? 'withdraw' : 'deposit');
   const [goalId, setGoalId] = useState<string | null>(params.goalId && goals.some((g) => g.id === params.goalId) ? params.goalId : null);
   const [raw, setRaw] = useState('0');
   const [note, setNote] = useState('');
-  const [done, setDone] = useState(false);
-  const save = useAction(backend.addTransaction);
-
+  const [done, setDone] = useState<'done' | 'requested' | null>(null);
   const amount = Number(raw);
+  const save = useAction(async () => {
+    if (kind === 'deposit') return backend.addTransaction({ amount, goalId, note: note.trim() });
+    await backend.requestWithdraw({ amount, goalId, note: note.trim() });
+  });
+
   const available = savedFor(goalId);
   const overdraft = kind === 'withdraw' && amount > available;
   const canSubmit = amount > 0 && !overdraft;
@@ -42,11 +45,32 @@ export default function TransferScreen() {
   const decimalSeparator = formatAmountInput('0.5', currency).charAt(1);
 
   const submit = async () => {
-    if (await save.run({ type: kind, amount, goalId, note: note.trim() })) {
+    if (await save.run()) {
       tap('success');
-      setDone(true);
+      // Withdrawals wait for the others' approval (sample partners approve right away).
+      const latest = backend.getSnapshot().couples[couple.id]?.requests[0];
+      setDone(!isDeposit && latest?.status === 'pending' ? 'requested' : 'done');
     }
   };
+
+  if (done === 'requested') {
+    return (
+      <Success
+        title={t('transfer.requestSent')}
+        amount={money(amount)}
+        body={t('transfer.requestBody', {
+          dest: destination,
+          names: joinNames(
+            others.map((o) => firstName(o.name)),
+            t('common.and'),
+          ),
+        })}
+        icon="hourglass"
+        onDone={goBack}
+        doneLabel={t('common.done')}
+      />
+    );
+  }
 
   if (done) {
     const remaining = goal ? goal.target - savedFor(goal.id) : 0;
@@ -55,7 +79,13 @@ export default function TransferScreen() {
         title={t(isDeposit ? 'transfer.successDeposit' : 'transfer.successWithdraw')}
         amount={money(amount)}
         body={t(isDeposit ? 'transfer.youDepositedTo' : 'transfer.youWithdrewFrom', { dest: destination })}
-        hint={goal && isDeposit ? (remaining <= 0 ? t('transfer.goalDone') : t('transfer.goalRemaining', { amount: money(remaining) })) : undefined}
+        hint={
+          goal && isDeposit
+            ? remaining <= 0
+              ? t('transfer.goalDone')
+              : t('transfer.goalRemaining', { amount: money(remaining) })
+            : undefined
+        }
         celebrate={!!goal && isDeposit && remaining <= 0}
         onDone={goBack}
         doneLabel={t('common.done')}
@@ -85,13 +115,32 @@ export default function TransferScreen() {
           </Text>
         </View>
         <Text style={[s.available, overdraft && { color: colors.danger }]}>
-          {overdraft ? t('transfer.overdraft', { amount: money(available) }) : t('transfer.available', { dest: destination, amount: money(available) })}
+          {overdraft
+            ? t('transfer.overdraft', { amount: money(available) })
+            : t('transfer.available', { dest: destination, amount: money(available) })}
         </Text>
+        {!isDeposit && others.length > 0 && (
+          <View style={s.approvalNote}>
+            <Icon name="handshake" size={15} color={colors.accent} />
+            <Text style={s.approvalText}>{t('transfer.needsApproval')}</Text>
+          </View>
+        )}
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.dests} style={s.destsWrap}>
-          <Chip label={t('common.commonFund')} selected={goalId === null} onPress={() => setGoalId(null)} leading={<GoalIcon icon="wallet" color="#5B6475" size={22} />} />
+          <Chip
+            label={t('common.commonFund')}
+            selected={goalId === null}
+            onPress={() => setGoalId(null)}
+            leading={<GoalIcon icon="wallet" color="#5B6475" size={22} />}
+          />
           {goals.map((g) => (
-            <Chip key={g.id} label={g.name} selected={goalId === g.id} onPress={() => setGoalId(g.id)} leading={<GoalIcon icon={g.icon} color={g.color} size={22} />} />
+            <Chip
+              key={g.id}
+              label={g.name}
+              selected={goalId === g.id}
+              onPress={() => setGoalId(g.id)}
+              leading={<GoalIcon icon={g.icon} color={g.color} size={22} />}
+            />
           ))}
         </ScrollView>
 
@@ -113,7 +162,13 @@ export default function TransferScreen() {
         <ErrorBanner message={save.error} />
         <Keypad onKey={(k) => setRaw((v) => applyKey(v, k))} allowDecimal={hasCents(currency)} decimalSeparator={decimalSeparator} />
         <Button
-          label={amount > 0 ? t(isDeposit ? 'transfer.depositCta' : 'transfer.withdrawCta', { amount: money(amount) }) : t(isDeposit ? 'transfer.deposit' : 'transfer.withdraw')}
+          label={
+            amount > 0
+              ? t(isDeposit ? 'transfer.depositCta' : others.length ? 'transfer.requestCta' : 'transfer.withdrawCta', {
+                  amount: money(amount),
+                })
+              : t(isDeposit ? 'transfer.deposit' : 'transfer.withdraw')
+          }
           onPress={submit}
           disabled={!canSubmit}
           loading={save.loading}
@@ -130,9 +185,11 @@ function Success({
   body,
   hint,
   celebrate,
+  icon = 'check',
   onDone,
   doneLabel,
 }: {
+  icon?: 'check' | 'hourglass';
   title: string;
   amount: string;
   body: string;
@@ -143,6 +200,7 @@ function Success({
 }) {
   const s = useStyles();
   const { colors } = useTheme();
+  const pendingTone = icon !== 'check';
   const [pop] = useState(() => new Animated.Value(0));
   const [fade] = useState(() => new Animated.Value(0));
   useEffect(() => {
@@ -156,9 +214,9 @@ function Success({
 
   return (
     <SafeAreaView style={[s.safe, s.success]}>
-      <Animated.View style={[s.successHalo, { transform: [{ scale: pop }] }]}>
-        <View style={s.successIcon}>
-          <Icon name="check" size={52} color="#FFFFFF" strokeWidth={3} />
+      <Animated.View style={[s.successHalo, pendingTone && { backgroundColor: colors.accentSoft }, { transform: [{ scale: pop }] }]}>
+        <View style={[s.successIcon, pendingTone && { backgroundColor: colors.accent }]}>
+          <Icon name={icon} size={icon === 'check' ? 52 : 44} color="#FFFFFF" strokeWidth={icon === 'check' ? 3 : 2.4} />
         </View>
       </Animated.View>
       <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }], alignItems: 'center', alignSelf: 'stretch' }}>
@@ -182,7 +240,13 @@ const useStyles = makeStyles(({ colors }) => ({
   safe: { flex: 1, backgroundColor: colors.surface },
   segmentWrap: { paddingHorizontal: spacing.xl + 8, marginTop: spacing.xs },
   body: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
-  amountWrap: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-start', marginTop: spacing.lg, paddingHorizontal: spacing.lg },
+  amountWrap: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.lg,
+  },
   currency: { fontFamily: fonts.bold, fontSize: 28, color: colors.text, marginTop: 12, marginRight: 4 },
   amount: { fontFamily: fonts.extrabold, fontSize: 68, color: colors.text, letterSpacing: -2.5 },
   muted: { color: colors.textSubtle },
@@ -199,6 +263,18 @@ const useStyles = makeStyles(({ colors }) => ({
     marginTop: spacing.md,
   },
   note: { flex: 1, minWidth: 0, height: 48, ...type.body, color: colors.text, outlineWidth: 0 },
+  approvalNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: 6,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: spacing.sm,
+  },
+  approvalText: { ...type.smallStrong, fontSize: 12, color: colors.accent },
   bottom: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm, gap: spacing.xs },
   success: { alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   successHalo: {

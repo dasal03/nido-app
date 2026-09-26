@@ -6,16 +6,20 @@ import QRCode from 'react-native-qrcode-svg';
 import { makeStyles, useT, useTheme } from '@/providers/Preferences';
 import { backend } from '@/services/backend';
 import { useSession } from '@/store/SavingsContext';
+import type { NestKind } from '@/store/types';
 import { fonts, radius, spacing, type } from '@/theme';
 import { inviteUrl, takePendingInvite } from '@/utils/invite';
 import { useAction } from '@/utils/useAction';
 import { Icon } from './Icon';
 import { QrScanner } from './QrScanner';
 import { Sheet } from './Sheet';
-import { Button, ErrorBanner, PressableScale, TextField, tap } from './ui';
+import { Button, ErrorBanner, PressableScale, Segmented, TextField, tap } from './ui';
 
-/** Shows the user's code and lets them link with a partner's code (or a sample partner). */
-export function LinkForm({ onLinked }: { onLinked?: () => void }) {
+/**
+ * Starts a new nest: a couple (shows the user's code and links with a partner's code or a sample
+ * partner) or a named family group. With `addMember`, it only adds someone to the active family.
+ */
+export function LinkForm({ onLinked, addMember }: { onLinked?: () => void; addMember?: boolean }) {
   const s = useStyles();
   const { colors } = useTheme();
   const { t } = useT();
@@ -24,8 +28,11 @@ export function LinkForm({ onLinked }: { onLinked?: () => void }) {
   const [copied, setCopied] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const link = useAction(backend.linkWithCode);
+  const [kind, setKind] = useState<NestKind>('couple');
+  const [familyName, setFamilyName] = useState('');
+  const link = useAction(addMember ? backend.addMemberByCode : backend.linkWithCode);
   const demo = useAction(backend.linkDemoPartner);
+  const family = useAction(backend.createFamily);
 
   if (!user) return null;
 
@@ -44,8 +51,101 @@ export function LinkForm({ onLinked }: { onLinked?: () => void }) {
     }
   };
 
+  const scanner = scanning && (
+    <QrScanner
+      onClose={() => setScanning(false)}
+      onCode={(scanned) => {
+        setScanning(false);
+        setCode(scanned);
+        submit(scanned);
+      }}
+    />
+  );
+  const codeField = (
+    <TextField
+      label={t(addMember ? 'family.memberCode' : 'link.partnerCode')}
+      icon="users"
+      value={code}
+      onChangeText={(v) => setCode(v.toUpperCase())}
+      placeholder="NIDO-XXXXX"
+      autoCapitalize="characters"
+      autoCorrect={false}
+      maxLength={10}
+      onSubmitEditing={() => submit()}
+    />
+  );
+
+  if (addMember) {
+    return (
+      <View style={{ gap: spacing.md }}>
+        {codeField}
+        <ErrorBanner message={link.error} />
+        <Button
+          label={t('family.addCta')}
+          icon="user-plus"
+          onPress={() => submit()}
+          loading={link.loading}
+          disabled={code.trim().length < 5}
+        />
+        <Button label={t('invite.scan')} icon="scan" variant="secondary" onPress={() => setScanning(true)} />
+        {scanner}
+      </View>
+    );
+  }
+
+  const createFamily = async () => {
+    if (await family.run(familyName)) {
+      tap('success');
+      onLinked?.();
+    }
+  };
+
+  const kindSwitch = (
+    <Segmented<NestKind>
+      value={kind}
+      onChange={setKind}
+      options={[
+        { value: 'couple', label: t('link.kindCouple'), icon: 'heart' },
+        { value: 'family', label: t('link.kindFamily'), icon: 'users' },
+      ]}
+    />
+  );
+
+  if (kind === 'family') {
+    return (
+      <View style={{ gap: spacing.md }}>
+        {kindSwitch}
+        <View style={s.familyIntro}>
+          <View style={s.familyIcon}>
+            <Icon name="home" size={24} color={colors.accent} />
+          </View>
+          <Text style={s.familyText}>{t('family.intro')}</Text>
+        </View>
+        <TextField
+          label={t('family.name')}
+          icon="edit"
+          value={familyName}
+          onChangeText={setFamilyName}
+          placeholder={t('family.namePlaceholder')}
+          maxLength={40}
+          autoCapitalize="words"
+          onSubmitEditing={createFamily}
+        />
+        <ErrorBanner message={family.error} />
+        <Button
+          label={t('family.create')}
+          icon="users"
+          onPress={createFamily}
+          loading={family.loading}
+          disabled={familyName.trim().length < 2}
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={{ gap: spacing.md }}>
+      {kindSwitch}
       <View style={s.codeCard}>
         <Text style={s.codeLabel}>{t('link.yourCode')}</Text>
         <Text style={s.code} selectable>
@@ -56,7 +156,9 @@ export function LinkForm({ onLinked }: { onLinked?: () => void }) {
             <Icon name={copied ? 'check' : 'copy'} size={16} color={colors.accent} />
             <Text style={s.codeActionText}>{t(copied ? 'common.copied' : 'common.copy')}</Text>
           </PressableScale>
-          <PressableScale style={s.codeAction} onPress={() => Share.share({ message: t('invite.shareMessage', { url, code: user.code }) }).catch(() => {})}>
+          <PressableScale
+            style={s.codeAction}
+            onPress={() => Share.share({ message: t('invite.shareMessage', { url, code: user.code }) }).catch(() => {})}>
             <Icon name="share" size={16} color={colors.accent} />
             <Text style={s.codeActionText}>{t('common.share')}</Text>
           </PressableScale>
@@ -73,17 +175,7 @@ export function LinkForm({ onLinked }: { onLinked?: () => void }) {
         <View style={s.line} />
       </View>
 
-      <TextField
-        label={t('link.partnerCode')}
-        icon="users"
-        value={code}
-        onChangeText={(v) => setCode(v.toUpperCase())}
-        placeholder="NIDO-XXXXX"
-        autoCapitalize="characters"
-        autoCorrect={false}
-        maxLength={10}
-        onSubmitEditing={() => submit()}
-      />
+      {codeField}
       <ErrorBanner message={link.error ?? demo.error} />
       <Button label={t('link.cta')} icon="link" onPress={() => submit()} loading={link.loading} disabled={code.trim().length < 5} />
       <Button label={t('invite.scan')} icon="scan" variant="secondary" onPress={() => setScanning(true)} />
@@ -107,16 +199,7 @@ export function LinkForm({ onLinked }: { onLinked?: () => void }) {
           <Text style={s.qrCode}>{user.code}</Text>
         </View>
       </Sheet>
-      {scanning && (
-        <QrScanner
-          onClose={() => setScanning(false)}
-          onCode={(scanned) => {
-            setScanning(false);
-            setCode(scanned);
-            submit(scanned);
-          }}
-        />
-      )}
+      {scanner}
     </View>
   );
 }
@@ -142,6 +225,23 @@ const useStyles = makeStyles(({ colors }) => ({
   qrSheet: { alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.sm },
   qrTitle: { ...type.h2, color: colors.text },
   qrBody: { ...type.small, color: colors.textMuted, textAlign: 'center', lineHeight: 19 },
-  qrBox: { padding: spacing.md, backgroundColor: '#FFFFFF', borderRadius: radius.md, marginTop: spacing.md, borderWidth: 1, borderColor: colors.border },
+  qrBox: {
+    padding: spacing.md,
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.md,
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  familyIntro: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md - 4,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  familyIcon: { width: 46, height: 46, borderRadius: 16, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  familyText: { ...type.small, color: colors.text, flex: 1, lineHeight: 19 },
   qrCode: { fontFamily: fonts.extrabold, fontSize: 20, color: colors.text, letterSpacing: 2, marginTop: spacing.sm },
 }));

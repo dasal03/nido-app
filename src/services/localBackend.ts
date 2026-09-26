@@ -6,8 +6,23 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 
 import { buildDemoData } from '@/store/seed';
-import type { Couple, Frequency, Goal, RecurringRule, Transaction, User } from '@/store/types';
-import { BackendError, advanceDate, checkPhone, checkRegistration, checkUsername, EMAIL_RE, normalizeCode, normalizeUsername, type Backend } from './types';
+import type { ApprovalRequest, Couple, Frequency, Goal, RecurringRule, Transaction, User } from '@/store/types';
+import { computeRefunds, nestBalance } from '@/utils/settlement';
+import { validatePassword } from '@/utils/validation';
+import {
+  BackendError,
+  advanceDate,
+  type RegisterInput,
+  checkPhone,
+  checkRegistration,
+  checkUsername,
+  EMAIL_RE,
+  normalizeCode,
+  normalizeEmail,
+  normalizeUsername,
+  type Backend,
+  type ErrorKey,
+} from './types';
 
 const STORAGE_KEY = 'nido/db/v2';
 const LEGACY_KEYS = ['nido/state/v1'];
@@ -16,6 +31,8 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 interface UserRecord extends User {
   passwordHash: string;
   salt: string;
+  /** Sample partner created by "Try with a sample partner"; approves requests automatically. */
+  isDemo?: boolean;
 }
 
 interface LocalDb {
@@ -58,8 +75,7 @@ function updateCouple(couple: Couple, patch: Partial<Couple>) {
   commit({ ...db, couples: { ...db.couples, [couple.id]: { ...couple, ...patch } } });
 }
 
-const hash = (password: string, salt: string) =>
-  Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${salt}:${password}`);
+const hash = (password: string, salt: string) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${salt}:${password}`);
 
 function generateCode() {
   const taken = new Set(Object.values(db.users).map((u) => u.code));
@@ -71,7 +87,7 @@ function generateCode() {
   return code;
 }
 
-async function createUser(input: { name: string; username: string; email: string; phone: string; password: string }): Promise<UserRecord> {
+async function createUser(input: RegisterInput): Promise<UserRecord> {
   const salt = Crypto.randomUUID();
   return {
     id: Crypto.randomUUID(),
@@ -80,7 +96,11 @@ async function createUser(input: { name: string; username: string; email: string
     username: input.username,
     email: input.email,
     phone: input.phone,
-    birthday: '',
+    birthday: input.birthday,
+    country: input.country,
+    gender: input.gender,
+    documentType: input.documentType,
+    documentNumber: input.documentNumber,
     photo: null,
     coupleIds: [],
     activeCoupleId: null,
@@ -95,6 +115,7 @@ function linkUsers(a: UserRecord, b: UserRecord, seed?: Pick<Couple, 'goals' | '
   const active = a.activeCoupleId ? db.couples[a.activeCoupleId] : undefined;
   const couple: Couple = {
     id: Crypto.randomUUID(),
+    kind: 'couple',
     name: null,
     memberIds: [a.id, b.id],
     currency: active?.currency ?? 'MXN',
@@ -105,6 +126,7 @@ function linkUsers(a: UserRecord, b: UserRecord, seed?: Pick<Couple, 'goals' | '
     recurring: [],
     split: null,
     petName: null,
+    requests: [],
   };
   commit({
     ...db,
@@ -119,7 +141,7 @@ function linkUsers(a: UserRecord, b: UserRecord, seed?: Pick<Couple, 'goals' | '
 
 /** True when both users already share a nest that hasn't been unlinked. */
 function alreadyLinked(a: User, b: User) {
-  return a.coupleIds.some((id) => b.coupleIds.includes(id) && !db.couples[id]?.archivedAt);
+  return a.coupleIds.some((id) => b.coupleIds.includes(id) && db.couples[id]?.kind === 'couple' && !db.couples[id]?.archivedAt);
 }
 
 function validUsername(raw: string, exceptId?: string) {
@@ -130,11 +152,93 @@ function validUsername(raw: string, exceptId?: string) {
 
 /** Derives a unique username from an email, for accounts created before usernames existed. */
 function usernameFromEmail(email: string, taken: Set<string>) {
-  const base = (email.split('@')[0] ?? 'user').toLowerCase().replace(/[^a-z0-9._]/g, '').slice(0, 16).padEnd(3, '0');
+  const base = (email.split('@')[0] ?? 'user')
+    .toLowerCase()
+    .replace(/[^a-z0-9._]/g, '')
+    .slice(0, 16)
+    .padEnd(3, '0');
   let candidate = base;
   for (let i = 2; taken.has(candidate); i++) candidate = `${base}${i}`;
   taken.add(candidate);
   return candidate;
+}
+
+const resetCodes = new Map<string, { code: string; expires: number }>();
+
+function updateRequest(couple: Couple, id: string, patch: Partial<ApprovalRequest>) {
+  updateCouple(couple, { requests: couple.requests.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
+}
+
+/** Creates a request approved by its author (and sample partners); runs it right away if nobody else must approve. */
+function createRequest(couple: Couple, input: Pick<ApprovalRequest, 'kind' | 'amount' | 'goalId' | 'note'>) {
+  const me = requireUser();
+  const demoMembers = couple.memberIds.filter((id) => (db.users[id] as UserRecord | undefined)?.isDemo);
+  const request: ApprovalRequest = {
+    id: Crypto.randomUUID(),
+    ...input,
+    by: me.id,
+    approvals: [me.id, ...demoMembers],
+    rejectedBy: null,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    resolvedAt: null,
+  };
+  const withRequest = { ...couple, requests: [request, ...couple.requests] };
+  updateCouple(couple, { requests: withRequest.requests });
+  resolveIfComplete(withRequest, request);
+}
+
+/** Saves the request; once every current member approved, carries it out. */
+function resolveIfComplete(couple: Couple, request: ApprovalRequest) {
+  const complete = couple.memberIds.every((id) => request.approvals.includes(id));
+  if (!complete) return updateRequest(couple, request.id, { approvals: request.approvals });
+  const now = new Date().toISOString();
+  const done: ApprovalRequest = { ...request, status: 'approved', resolvedAt: now };
+  const requests = couple.requests.map((r) => (r.id === request.id ? done : r));
+  const tx = (by: string, amount: number, goalId: string | null, note: string, refund = false): Transaction => ({
+    id: Crypto.randomUUID(),
+    type: 'withdraw',
+    amount,
+    by,
+    goalId,
+    note,
+    date: now,
+    reactions: {},
+    comments: [],
+    refund,
+  });
+
+  if (request.kind === 'withdraw') {
+    if ((request.amount ?? 0) > nestBalance(couple, request.goalId)) throw new BackendError('errors.insufficientFunds');
+    return updateCouple(couple, {
+      requests,
+      transactions: [tx(request.by, request.amount!, request.goalId, request.note), ...couple.transactions],
+    });
+  }
+
+  const refunds = computeRefunds(couple);
+  const leaving = request.kind === 'leave' ? [request.by] : couple.memberIds;
+  const refundTxs = leaving.filter((id) => refunds[id] > 0).map((id) => tx(id, refunds[id], null, '', true));
+  const users = { ...db.users };
+  for (const id of leaving) {
+    const member = users[id];
+    if (!member) continue;
+    const coupleIds = member.coupleIds.filter((c) => c !== couple.id);
+    users[id] = {
+      ...member,
+      coupleIds,
+      activeCoupleId: member.activeCoupleId === couple.id ? (coupleIds[0] ?? null) : member.activeCoupleId,
+    };
+  }
+  const next: Couple = {
+    ...couple,
+    requests,
+    transactions: [...refundTxs, ...couple.transactions],
+    ...(request.kind === 'dissolve'
+      ? { archivedAt: now, recurring: couple.recurring.map((r) => ({ ...r, active: false })) }
+      : { memberIds: couple.memberIds.filter((id) => id !== request.by), recurring: couple.recurring.filter((r) => r.by !== request.by) }),
+  };
+  commit({ ...db, users, couples: { ...db.couples, [couple.id]: next } });
 }
 
 export const localBackend: Backend = {
@@ -143,15 +247,25 @@ export const localBackend: Backend = {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
       if (raw) db = JSON.parse(raw);
       // Migration: accounts created before usernames existed get one derived from their email.
-      const taken = new Set(Object.values(db.users).map((u) => u.username).filter(Boolean));
+      const taken = new Set(
+        Object.values(db.users)
+          .map((u) => u.username)
+          .filter(Boolean),
+      );
       for (const u of Object.values(db.users)) if (!u.username) u.username = usernameFromEmail(u.email, taken);
       // Migration: single `coupleId` → list of nests plus an active one.
       for (const u of Object.values(db.users) as (UserRecord & { coupleId?: string | null })[]) {
+        u.country ??= 'CO';
+        u.gender ??= '';
+        u.documentType ??= '';
+        u.documentNumber ??= '';
         if (!u.coupleIds) {
           u.coupleIds = u.coupleId ? [u.coupleId] : [];
           u.activeCoupleId = u.coupleId ?? null;
           delete u.coupleId;
         }
+        // Sample partners created before the isDemo flag existed.
+        u.isDemo ??= /^ana\.demo\+.*@nido\.app$/.test(u.email);
       }
       for (const c of Object.values(db.couples)) {
         c.name ??= null;
@@ -159,6 +273,8 @@ export const localBackend: Backend = {
         c.recurring ??= [];
         c.split ??= null;
         c.petName ??= null;
+        c.kind ??= 'couple';
+        c.requests ??= [];
         for (const tx of c.transactions) {
           tx.reactions ??= {};
           tx.comments ??= [];
@@ -177,12 +293,24 @@ export const localBackend: Backend = {
 
   getSnapshot: () => db,
 
-  async register(input: { name: string; username: string; email: string; phone: string; password: string }) {
-    const { name, username, email, phone, password } = checkRegistration(input);
-    validUsername(username);
-    if (Object.values(db.users).some((u) => u.email === email)) throw new BackendError('errors.emailTaken');
-    const user = await createUser({ name, username, email, phone, password });
+  async register(input) {
+    const clean = checkRegistration(input);
+    validUsername(clean.username);
+    if (Object.values(db.users).some((u) => u.email === clean.email)) throw new BackendError('errors.emailTaken');
+    if (!(await this.isDocumentAvailable(clean.country, clean.documentType, clean.documentNumber)))
+      throw new BackendError('errors.documentTaken');
+    const user = await createUser(clean);
     commit({ ...db, users: { ...db.users, [user.id]: user }, sessionUserId: user.id });
+    return { needsConfirmation: false };
+  },
+
+  async isUsernameAvailable(username) {
+    return !Object.values(db.users).some((u) => u.username === normalizeUsername(username));
+  },
+
+  async isDocumentAvailable(country, type, number) {
+    const n = number.trim().toUpperCase();
+    return !Object.values(db.users).some((u) => u.country === country && u.documentType === type && u.documentNumber === n);
   },
 
   /** Signs in with either the email or the username (with or without a leading "@"). */
@@ -199,7 +327,7 @@ export const localBackend: Backend = {
     commit({ ...db, sessionUserId: null });
   },
 
-  async updateProfile(patch: Partial<Pick<User, 'name' | 'username' | 'phone' | 'birthday' | 'photo'>>) {
+  async updateProfile(patch) {
     const user = requireUser();
     const next = { ...patch };
     if (next.name !== undefined && !next.name.trim()) throw new BackendError('errors.nameRequired');
@@ -226,11 +354,16 @@ export const localBackend: Backend = {
       name: 'Ana',
       username: `ana.${stamp}`,
       email: `ana.demo+${stamp}@nido.app`,
-      phone: '+52 55 0000 0000',
+      phone: '+52 5500000000',
       password: Crypto.randomUUID(),
+      country: 'MX',
+      birthday: '',
+      gender: '',
+      documentType: '',
+      documentNumber: '',
     });
-    db = { ...db, users: { ...db.users, [partner.id]: partner } };
-    linkUsers(me, partner, buildDemoData(me.id, partner.id));
+    db = { ...db, users: { ...db.users, [partner.id]: { ...partner, isDemo: true } } };
+    linkUsers(me, db.users[partner.id], buildDemoData(me.id, partner.id));
   },
 
   /** Switches the nest shown in the app. */
@@ -244,21 +377,114 @@ export const localBackend: Backend = {
     updateCouple(couple, { name: name.trim() || null });
   },
 
-  /**
-   * Ends a nest for both members. Its history is archived (hidden, not deleted) and each member
-   * falls back to another nest, or to the linking screen if it was their only one.
-   */
-  async unlinkCouple(coupleId: string) {
-    const { couple } = requireMembership(coupleId);
-    const users = { ...db.users };
-    for (const memberId of couple.memberIds) {
-      const member = users[memberId];
-      if (!member) continue;
-      const coupleIds = member.coupleIds.filter((id) => id !== coupleId);
-      const activeCoupleId = member.activeCoupleId === coupleId ? (coupleIds[0] ?? null) : member.activeCoupleId;
-      users[memberId] = { ...member, coupleIds, activeCoupleId };
-    }
-    commit({ ...db, users, couples: { ...db.couples, [coupleId]: { ...couple, archivedAt: new Date().toISOString() } } });
+  async createFamily(rawName: string) {
+    const me = requireUser();
+    const name = rawName.trim();
+    if (name.length < 2) throw new BackendError('errors.familyName');
+    const active = me.activeCoupleId ? db.couples[me.activeCoupleId] : undefined;
+    const family: Couple = {
+      id: Crypto.randomUUID(),
+      kind: 'family',
+      name,
+      memberIds: [me.id],
+      currency: active?.currency ?? 'MXN',
+      createdAt: new Date().toISOString(),
+      archivedAt: null,
+      goals: [],
+      transactions: [],
+      recurring: [],
+      split: null,
+      petName: null,
+      requests: [],
+    };
+    commit({
+      ...db,
+      users: { ...db.users, [me.id]: { ...me, coupleIds: [...me.coupleIds, family.id], activeCoupleId: family.id } },
+      couples: { ...db.couples, [family.id]: family },
+    });
+  },
+
+  async addMemberByCode(rawCode: string) {
+    const { user: me, couple } = requireCouple();
+    if (couple.kind !== 'family') throw new BackendError('errors.notFamily');
+    const code = normalizeCode(rawCode);
+    if (code === me.code) throw new BackendError('errors.ownCode');
+    const member = Object.values(db.users).find((u) => u.code === code);
+    if (!member) throw new BackendError('errors.codeNotFound');
+    if (couple.memberIds.includes(member.id)) throw new BackendError('errors.alreadyMember');
+    commit({
+      ...db,
+      users: {
+        ...db.users,
+        [member.id]: { ...member, coupleIds: [...member.coupleIds, couple.id], activeCoupleId: member.activeCoupleId ?? couple.id },
+      },
+      couples: { ...db.couples, [couple.id]: { ...couple, memberIds: [...couple.memberIds, member.id] } },
+    });
+  },
+
+  async requestWithdraw({ amount, goalId, note }) {
+    const { couple } = requireCouple();
+    if (!(amount > 0)) throw new BackendError('errors.amountPositive');
+    if (amount > nestBalance(couple, goalId)) throw new BackendError('errors.insufficientFunds');
+    createRequest(couple, { kind: 'withdraw', amount, goalId, note: note.trim() });
+  },
+
+  async requestDissolve() {
+    const { couple } = requireCouple();
+    if (couple.requests.some((r) => r.status === 'pending' && r.kind === 'dissolve')) throw new BackendError('errors.requestPending');
+    createRequest(couple, { kind: 'dissolve', amount: null, goalId: null, note: '' });
+  },
+
+  async requestLeave() {
+    const { user, couple } = requireCouple();
+    if (couple.kind !== 'family') throw new BackendError('errors.notFamily');
+    if (couple.requests.some((r) => r.status === 'pending' && r.kind === 'leave' && r.by === user.id))
+      throw new BackendError('errors.requestPending');
+    createRequest(couple, { kind: 'leave', amount: null, goalId: null, note: '' });
+  },
+
+  async approveRequest(id) {
+    const { user, couple } = requireCouple();
+    const request = couple.requests.find((r) => r.id === id && r.status === 'pending');
+    if (!request) return;
+    resolveIfComplete(couple, { ...request, approvals: [...new Set([...request.approvals, user.id])] });
+  },
+
+  async rejectRequest(id) {
+    const { user, couple } = requireCouple();
+    updateRequest(couple, id, { status: 'rejected', rejectedBy: user.id, resolvedAt: new Date().toISOString() });
+  },
+
+  async cancelRequest(id) {
+    const { user, couple } = requireCouple();
+    const request = couple.requests.find((r) => r.id === id);
+    if (!request || request.by !== user.id) return;
+    updateRequest(couple, id, { status: 'cancelled', resolvedAt: new Date().toISOString() });
+  },
+
+  async requestPasswordReset(email) {
+    const user = Object.values(db.users).find((u) => u.email === normalizeEmail(email));
+    // Same answer whether or not the account exists, so emails can't be discovered.
+    if (!user) return {};
+    const code = String(100000 + (Crypto.getRandomBytes(3).reduce((a, b) => a * 256 + b, 0) % 900000));
+    resetCodes.set(user.email, { code, expires: Date.now() + 15 * 60_000 });
+    return { devCode: code };
+  },
+
+  async resetPassword({ email, code, password }) {
+    const key = normalizeEmail(email);
+    const entry = resetCodes.get(key);
+    if (!entry || entry.code !== code.trim() || entry.expires < Date.now()) throw new BackendError('errors.resetCode');
+    const weak = validatePassword(password);
+    if (weak) throw new BackendError(weak as ErrorKey);
+    const user = Object.values(db.users).find((u) => u.email === key)!;
+    const salt = Crypto.randomUUID();
+    resetCodes.delete(key);
+    commit({
+      ...db,
+      users: { ...db.users, [user.id]: { ...user, salt, passwordHash: await hash(password, salt) } },
+      sessionUserId: user.id,
+    });
   },
 
   async setCurrency(currency: string) {
@@ -281,10 +507,18 @@ export const localBackend: Backend = {
   },
 
   /** Records a movement on behalf of the signed-in user. */
-  async addTransaction(tx: Pick<Transaction, 'type' | 'amount' | 'goalId' | 'note'> & { recurringId?: string }) {
+  async addTransaction(tx) {
     const { user, couple } = requireCouple();
     if (!(tx.amount > 0)) throw new BackendError('errors.amountPositive');
-    const entry: Transaction = { ...tx, id: Crypto.randomUUID(), by: user.id, date: new Date().toISOString(), reactions: {}, comments: [] };
+    const entry: Transaction = {
+      ...tx,
+      type: 'deposit',
+      id: Crypto.randomUUID(),
+      by: user.id,
+      date: new Date().toISOString(),
+      reactions: {},
+      comments: [],
+    };
     updateCouple(couple, { transactions: [entry, ...couple.transactions] });
   },
 
@@ -366,7 +600,9 @@ export const localBackend: Backend = {
   /** Skips a due recurring contribution until its next date. */
   async skipRecurring(id: string) {
     const { couple } = requireCouple();
-    updateCouple(couple, { recurring: couple.recurring.map((r) => (r.id === id ? { ...r, nextDate: advanceDate(r.nextDate, r.frequency) } : r)) });
+    updateCouple(couple, {
+      recurring: couple.recurring.map((r) => (r.id === id ? { ...r, nextDate: advanceDate(r.nextDate, r.frequency) } : r)),
+    });
   },
 
   /** Sets the agreed contribution share (percent per member); null resets to 50/50. */

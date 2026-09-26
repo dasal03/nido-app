@@ -1,4 +1,5 @@
 import type { TranslationKey } from '@/i18n/es';
+import { validateBirthday, validateDocument, validateEmail, validateName, validatePassword, type FieldError } from '@/utils/validation';
 import type { Couple, Frequency, Goal, RecurringRule, Transaction, User } from '@/store/types';
 
 /** Everything the UI reads: people, nests and who is signed in. */
@@ -8,7 +9,7 @@ export interface Db {
   sessionUserId: string | null;
 }
 
-export type ErrorKey = Extract<TranslationKey, `errors.${string}`>;
+export type ErrorKey = Extract<TranslationKey, `errors.${string}` | `validation.${string}`>;
 
 /** Error with a translation key, so the UI can show it in the user's language. */
 export class BackendError extends Error {
@@ -17,22 +18,59 @@ export class BackendError extends Error {
   }
 }
 
+export interface RegisterInput {
+  name: string;
+  username: string;
+  email: string;
+  /** International format: "+57 3012668858". */
+  phone: string;
+  password: string;
+  country: string;
+  /** ISO date YYYY-MM-DD. */
+  birthday: string;
+  gender: string;
+  documentType: string;
+  documentNumber: string;
+}
+
 /** The contract every backend (local device storage or Supabase) implements. Screens only use this. */
 export interface Backend {
   init(): Promise<void>;
   subscribe(listener: () => void): () => void;
   getSnapshot(): Db;
 
-  register(input: { name: string; username: string; email: string; phone: string; password: string }): Promise<void>;
+  /** Creates the account. `needsConfirmation` is true when the user must confirm their email before signing in. */
+  register(input: RegisterInput): Promise<{ needsConfirmation: boolean }>;
+  isUsernameAvailable(username: string): Promise<boolean>;
+  isDocumentAvailable(country: string, type: string, number: string): Promise<boolean>;
   login(input: { identifier: string; password: string }): Promise<void>;
   logout(): Promise<void>;
-  updateProfile(patch: Partial<Pick<User, 'name' | 'username' | 'phone' | 'birthday' | 'photo'>>): Promise<void>;
+  updateProfile(patch: Partial<Pick<User, 'name' | 'username' | 'phone' | 'birthday' | 'photo' | 'country' | 'gender'>>): Promise<void>;
 
+  /** Starts a couple nest with the owner of `code`. */
   linkWithCode(code: string): Promise<void>;
   linkDemoPartner(): Promise<void>;
+  /** Creates a named family group with the signed-in user as its first member. */
+  createFamily(name: string): Promise<void>;
+  /** Adds the owner of `code` to the active family group. */
+  addMemberByCode(code: string): Promise<void>;
   setActiveCouple(coupleId: string): Promise<void>;
   renameCouple(coupleId: string, name: string): Promise<void>;
-  unlinkCouple(coupleId: string): Promise<void>;
+
+  /** Withdrawals need every other member's approval; this creates the request. */
+  requestWithdraw(input: { amount: number; goalId: string | null; note: string }): Promise<void>;
+  /** Asks to dissolve the active nest; when approved, each member gets their share back. */
+  requestDissolve(): Promise<void>;
+  /** Families: asks to leave the group with your share. */
+  requestLeave(): Promise<void>;
+  approveRequest(id: string): Promise<void>;
+  rejectRequest(id: string): Promise<void>;
+  cancelRequest(id: string): Promise<void>;
+
+  /** Emails a 6-digit reset code. The local backend returns it (`devCode`) since it can't send email. */
+  requestPasswordReset(email: string): Promise<{ devCode?: string }>;
+  /** Verifies the code, sets the new password and signs the user in. */
+  resetPassword(input: { email: string; code: string; password: string }): Promise<void>;
   setCurrency(currency: string): Promise<void>;
   setSplit(split: Record<string, number> | null): Promise<void>;
   renamePet(name: string): Promise<void>;
@@ -40,7 +78,8 @@ export interface Backend {
   addGoal(goal: Omit<Goal, 'id' | 'createdAt'>): Promise<void>;
   deleteGoal(id: string): Promise<void>;
 
-  addTransaction(tx: Pick<Transaction, 'type' | 'amount' | 'goalId' | 'note'> & { recurringId?: string }): Promise<void>;
+  /** Records a contribution (deposits only; withdrawals go through `requestWithdraw`). */
+  addTransaction(tx: Pick<Transaction, 'amount' | 'goalId' | 'note'> & { recurringId?: string }): Promise<void>;
   react(txId: string, emoji: string): Promise<void>;
   comment(txId: string, text: string): Promise<void>;
 
@@ -87,14 +126,21 @@ export function checkPhone(raw: string) {
   return phone;
 }
 
-/** Validation shared by both backends; returns the normalized fields. */
-export function checkRegistration(input: { name: string; username: string; email: string; phone: string; password: string }) {
+/** Validation shared by both backends (the form validates the same rules live); returns normalized fields. */
+export function checkRegistration(input: RegisterInput): RegisterInput {
+  const fail = (key: FieldError) => {
+    if (key) throw new BackendError(key as ErrorKey);
+  };
   const name = input.name.trim();
   const email = normalizeEmail(input.email);
-  if (!name) throw new BackendError('errors.nameRequired');
+  fail(validateName(name));
   const username = checkUsername(input.username);
-  if (!EMAIL_RE.test(email)) throw new BackendError('errors.invalidEmail');
+  fail(validateEmail(email));
   const phone = checkPhone(input.phone);
-  if (input.password.length < 6) throw new BackendError('errors.weakPassword');
-  return { name, username, email, phone, password: input.password };
+  fail(validatePassword(input.password));
+  fail(validateBirthday(input.birthday));
+  const documentNumber = input.documentNumber.trim().toUpperCase();
+  fail(validateDocument(input.country, input.documentType, documentNumber));
+  if (!input.gender) throw new BackendError('validation.required');
+  return { ...input, name, username, email, phone, documentNumber };
 }

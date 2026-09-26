@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { CoupleAvatars } from '@/components/Avatar';
+import { NestAvatars } from '@/components/Avatar';
 import { GoalIcon } from '@/components/GoalIcon';
 import { Icon } from '@/components/Icon';
 import { Card, EmptyState, PressableScale, ProgressBar, ScreenHeader } from '@/components/ui';
@@ -38,17 +38,19 @@ function ArchivedNest({ nest }: { nest: Nest }) {
   const { t, locale } = useT();
   const { user } = useSession();
   const [open, setOpen] = useState(false);
-  const { couple, partner } = nest;
+  const { couple, members } = nest;
   const money = (n: number) => formatMoney(n, couple.currency);
   const signed = (goalId?: string | null) =>
-    couple.transactions.filter((tx) => goalId === undefined || tx.goalId === goalId).reduce((sum, tx) => sum + (tx.type === 'deposit' ? tx.amount : -tx.amount), 0);
-  const name = (id: string) => (id === user?.id ? user.name : partner.name);
+    couple.transactions
+      .filter((tx) => goalId === undefined || tx.goalId === goalId)
+      .reduce((sum, tx) => sum + (tx.type === 'deposit' ? tx.amount : -tx.amount), 0);
+  const name = (id: string) => members.find((m) => m.id === id)?.name ?? t('family.formerMember');
   if (!user) return null;
 
   return (
     <Card style={{ gap: spacing.md }}>
       <PressableScale onPress={() => setOpen((o) => !o)} scaleTo={0.99} haptic={false} style={s.header}>
-        <CoupleAvatars me={user} partner={partner} size={38} ring={colors.surface} />
+        <NestAvatars users={members} size={38} ring={colors.surface} />
         <View style={{ flex: 1 }}>
           <Text style={s.name} numberOfLines={1}>
             {nest.name}

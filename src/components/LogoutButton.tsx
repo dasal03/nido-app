@@ -1,7 +1,8 @@
 import { makeStyles, useT, useTheme } from '@/providers/Preferences';
 import { backend } from '@/services/backend';
 import { Icon } from './Icon';
-import { PressableScale, useConfirm } from './ui';
+import { useConfirm } from './ConfirmDialog';
+import { PressableScale } from './ui';
 
 /** Round red sign-out button; asks for confirmation first. */
 export function LogoutButton() {
@@ -14,7 +15,7 @@ export function LogoutButton() {
       accessibilityRole="button"
       accessibilityLabel={t('settings.logout')}
       scaleTo={0.88}
-      onPress={() => confirm(t('settings.logoutTitle'), t('settings.logoutBody'), t('settings.logout'), backend.logout)}
+      onPress={() => confirm(t('settings.logoutTitle'), t('settings.logoutBody'), t('settings.logout'), backend.logout, { icon: 'logout' })}
       style={s.button}>
       <Icon name="logout" size={19} color={colors.danger} />
     </PressableScale>

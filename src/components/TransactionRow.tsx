@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { makeStyles, useT, useTheme } from '@/providers/Preferences';
-import { useMoney, useSavings } from '@/store/SavingsContext';
+import { firstName, useMoney, useSavings } from '@/store/SavingsContext';
 import type { Transaction } from '@/store/types';
 import { spacing, type } from '@/theme';
 import { formatTime } from '@/utils/format';
@@ -21,9 +21,13 @@ export function TransactionRow({ tx, showDivider }: { tx: Transaction; showDivid
   const isDeposit = tx.type === 'deposit';
   const author = member(tx.by);
   const mine = tx.by === me.id;
-  const title = mine
-    ? t(isDeposit ? 'tx.youDeposited' : 'tx.youWithdrew')
-    : t(isDeposit ? 'tx.deposited' : 'tx.withdrew', { name: author.name });
+  const title = tx.refund
+    ? mine
+      ? t('tx.youRefunded')
+      : t('tx.refunded', { name: firstName(author.name) })
+    : mine
+      ? t(isDeposit ? 'tx.youDeposited' : 'tx.youWithdrew')
+      : t(isDeposit ? 'tx.deposited' : 'tx.withdrew', { name: firstName(author.name) });
   const destination = goal ? goal.name : t('common.commonFund');
   const [open, setOpen] = useState(false);
   const reactions = Object.values(tx.reactions);
@@ -49,7 +53,7 @@ export function TransactionRow({ tx, showDivider }: { tx: Transaction; showDivid
           </Text>
           <Text style={s.subtitle} numberOfLines={1}>
             {tx.note ? `${tx.note} · ` : ''}
-            {destination}
+            {tx.refund ? t('tx.refundDetail') : destination}
           </Text>
           {(reactions.length > 0 || tx.comments.length > 0 || tx.recurringId) && (
             <View style={s.social}>

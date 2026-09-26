@@ -17,6 +17,7 @@ import {
   ChevronRight,
   CircleAlert,
   CircleCheck,
+  CircleX,
   Clock,
   Coins,
   Copy,
@@ -33,10 +34,12 @@ import {
   Flame,
   Gem,
   Gift,
+  Globe,
   GraduationCap,
   Heart,
   HeartPulse,
   House,
+  IdCard,
   Image as ImageIcon,
   Languages,
   Laptop,
@@ -61,7 +64,9 @@ import {
   QrCode,
   ReceiptText,
   Repeat,
+  ScanFace,
   ScanLine,
+  Search,
   Send,
   Settings,
   Share2,
@@ -69,6 +74,8 @@ import {
   Smartphone,
   Sofa,
   Sparkles,
+  Square,
+  SquareCheckBig,
   Star,
   Sun,
   Target,
@@ -83,8 +90,14 @@ import {
   UserPlus,
   Users,
   UtensilsCrossed,
+  Venus,
   Wallet,
   X,
+  DoorOpen,
+  Handshake,
+  Hourglass,
+  KeyRound,
+  TriangleAlert,
   ZoomIn,
   ZoomOut,
   type LucideIcon,
@@ -164,6 +177,19 @@ const ICONS = {
   send: Send,
   star: Star,
   trophy: Trophy,
+  'face-id': ScanFace,
+  checkbox: Square,
+  'checkbox-on': SquareCheckBig,
+  search: Search,
+  'x-circle': CircleX,
+  globe: Globe,
+  'id-card': IdCard,
+  gender: Venus,
+  door: DoorOpen,
+  handshake: Handshake,
+  hourglass: Hourglass,
+  key: KeyRound,
+  warning: TriangleAlert,
   // Goal categories
   plane: Plane,
   home: House,
@@ -206,7 +232,17 @@ export const GOAL_ICON_NAMES = [
 
 export type GoalIconName = (typeof GOAL_ICON_NAMES)[number];
 
-export function Icon({ name, size = 22, color, strokeWidth = 2 }: { name: IconName | string; size?: number; color: string; strokeWidth?: number }) {
+export function Icon({
+  name,
+  size = 22,
+  color,
+  strokeWidth = 2,
+}: {
+  name: IconName | string;
+  size?: number;
+  color: string;
+  strokeWidth?: number;
+}) {
   const Glyph = ICONS[name as IconName] ?? Sparkles;
   return <Glyph size={size} color={color} strokeWidth={strokeWidth} />;
 }

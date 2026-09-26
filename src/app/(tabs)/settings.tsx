@@ -8,7 +8,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/Avatar';
 import { AvatarCropper } from '@/components/AvatarCropper';
 import { ExportSheet } from '@/components/ExportSheet';
-import { authenticate, canUseDeviceLock, lockSupported } from '@/components/LockOverlay';
+import { biometryLabelKey } from '@/components/BiometricOffer';
+import {
+  biometricsSupported,
+  disableBiometricLogin,
+  enableBiometricLogin,
+  getBiometry,
+  getEnrolledIdentifier,
+  type BiometryKind,
+} from '@/services/biometrics';
 import { Icon, type IconName } from '@/components/Icon';
 import { AddNestRow, NestActionsSheet, NestRow } from '@/components/NestSheets';
 import { PhotoSheet, type PhotoAction } from '@/components/PhotoSheet';
@@ -16,7 +24,7 @@ import { SettingsRow } from '@/components/SettingsRow';
 import { Sheet } from '@/components/Sheet';
 import { LogoutButton } from '@/components/LogoutButton';
 import { useTabBarSpace } from '@/components/TabBar';
-import { Card, ErrorBanner, PressableScale, TabHeader, tap } from '@/components/ui';
+import { Button, Card, ErrorBanner, PressableScale, TabHeader, TextField, tap } from '@/components/ui';
 import { makeStyles, usePreferences, type LanguagePref, type ThemePref } from '@/providers/Preferences';
 import { backend } from '@/services/backend';
 import { ensureNotificationPermission, hasNotificationPermission, notificationsSupported } from '@/services/notifications';
@@ -43,7 +51,9 @@ export default function SettingsScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const [notifGranted, setNotifGranted] = useState(false);
   useEffect(() => {
-    hasNotificationPermission().then(setNotifGranted).catch(() => {});
+    hasNotificationPermission()
+      .then(setNotifGranted)
+      .catch(() => {});
   }, []);
 
   /** Turns a notification preference on (asking for permission first) or off. */
@@ -55,13 +65,40 @@ export default function SettingsScreen() {
     setPref(key, value);
   };
 
-  /** Enabling the lock requires a successful authentication, so users can't lock themselves out. */
-  const toggleLock = async (value: boolean) => {
+  // Biometric sign-in: available when the device has Face ID / fingerprint enrolled.
+  const [bioKind, setBioKind] = useState<BiometryKind | null>(null);
+  const [bioEnabled, setBioEnabled] = useState(false);
+  const [bioSheet, setBioSheet] = useState(false);
+  const [bioPassword, setBioPassword] = useState('');
+  const bioSave = useAction(async () => {
+    // Verify the password with the server before storing it.
+    await backend.login({ identifier: me.email, password: bioPassword });
+    await enableBiometricLogin(me.email, bioPassword, t('bio.prompt'));
+    setBioEnabled(true);
+    setBioSheet(false);
+    setBioPassword('');
+    tap('success');
+  });
+  useEffect(() => {
+    getBiometry()
+      .then(setBioKind)
+      .catch(() => {});
+    getEnrolledIdentifier()
+      .then((id) => setBioEnabled(id?.toLowerCase() === me.email.toLowerCase()))
+      .catch(() => {});
+  }, [me.email]);
+  const bioMethod = t(biometryLabelKey(bioKind ?? 'generic'));
+
+  const toggleBiometrics = async (value: boolean) => {
     setNotice(null);
-    if (!value) return setPref('lock', false);
-    if (!lockSupported) return setNotice(t('settings.webUnavailable'));
-    if (!(await canUseDeviceLock())) return setNotice(t('settings.lockUnavailable'));
-    if (await authenticate(t('lock.prompt'))) setPref('lock', true);
+    if (!value) {
+      await disableBiometricLogin();
+      setBioEnabled(false);
+      return;
+    }
+    if (!biometricsSupported) return setNotice(t('settings.webUnavailable'));
+    if (!bioKind) return setNotice(t('settings.lockUnavailable'));
+    setBioSheet(true);
   };
 
   const toggle = (value: boolean, onChange: (v: boolean) => void) => (
@@ -135,7 +172,12 @@ export default function SettingsScreen() {
 
         <Text style={s.section}>{t('settings.account')}</Text>
         <Card style={s.group}>
-          <SettingsRow icon="user-edit" label={t('settings.personalInfo')} hint={t('settings.personalInfoHint')} onPress={() => router.push('/edit-profile')} />
+          <SettingsRow
+            icon="user-edit"
+            label={t('settings.personalInfo')}
+            hint={t('settings.personalInfoHint')}
+            onPress={() => router.push('/edit-profile')}
+          />
           <SettingsRow
             icon="qr"
             label={t('profile.yourCode')}
@@ -153,7 +195,14 @@ export default function SettingsScreen() {
           ))}
           <AddNestRow onPress={() => router.push('/add-partner')} />
           {archived.length > 0 && (
-            <SettingsRow icon="archive" label={t('settings.archived')} hint={t('settings.archivedHint')} value={String(archived.length)} onPress={() => router.push('/archived')} divider />
+            <SettingsRow
+              icon="archive"
+              label={t('settings.archived')}
+              hint={t('settings.archivedHint')}
+              value={String(archived.length)}
+              onPress={() => router.push('/archived')}
+              divider
+            />
           )}
         </Card>
         <Text style={s.caption}>{t('nests.manage')}</Text>
@@ -215,11 +264,11 @@ export default function SettingsScreen() {
         <Text style={s.section}>{t('settings.security')}</Text>
         <Card style={s.group}>
           <SettingsRow
-            icon="fingerprint"
-            label={t('settings.lock')}
-            hint={t('settings.lockHint')}
-            onPress={() => toggleLock(!prefs.lock)}
-            trailing={toggle(prefs.lock, toggleLock)}
+            icon={bioKind === 'face' ? 'face-id' : 'fingerprint'}
+            label={t('bio.settingsLabel', { method: bioMethod })}
+            hint={t('bio.settingsHint')}
+            onPress={() => toggleBiometrics(!bioEnabled)}
+            trailing={toggle(bioEnabled, toggleBiometrics)}
           />
           <SettingsRow
             icon="eye-off"
@@ -234,8 +283,19 @@ export default function SettingsScreen() {
 
         <Text style={s.section}>{t('settings.data')}</Text>
         <Card style={s.group}>
-          <SettingsRow icon="repeat" label={t('recurring.title')} hint={t('settings.recurringHint')} onPress={() => router.push('/recurring')} />
-          <SettingsRow icon="download" label={t('settings.export')} hint={t('settings.exportHint')} onPress={() => setExporting(true)} divider />
+          <SettingsRow
+            icon="repeat"
+            label={t('recurring.title')}
+            hint={t('settings.recurringHint')}
+            onPress={() => router.push('/recurring')}
+          />
+          <SettingsRow
+            icon="download"
+            label={t('settings.export')}
+            hint={t('settings.exportHint')}
+            onPress={() => setExporting(true)}
+            divider
+          />
         </Card>
 
         <Text style={s.version}>{t('settings.version', { version: Constants.expoConfig?.version ?? '1.0.0' })}</Text>
@@ -244,6 +304,29 @@ export default function SettingsScreen() {
       <PhotoSheet visible={photoSheet} user={me} onClose={() => setPhotoSheet(false)} onSelect={onPhotoAction} />
       <NestActionsSheet nest={nestSheet} onClose={() => setNestSheet(null)} />
       <ExportSheet visible={exporting} onClose={() => setExporting(false)} />
+      <Sheet visible={bioSheet} onClose={() => setBioSheet(false)}>
+        <View style={{ gap: spacing.md }}>
+          <Text style={s.sheetTitle}>{t('bio.confirmTitle')}</Text>
+          <Text style={s.sheetBody}>{t('bio.confirmBody', { method: bioMethod })}</Text>
+          <TextField
+            label={t('auth.password')}
+            icon="lock"
+            value={bioPassword}
+            onChangeText={setBioPassword}
+            secure
+            autoFocus
+            onSubmitEditing={() => bioSave.run()}
+          />
+          <ErrorBanner message={bioSave.error} />
+          <Button
+            label={t('bio.save')}
+            icon={bioKind === 'face' ? 'face-id' : 'fingerprint'}
+            onPress={() => bioSave.run()}
+            loading={bioSave.loading}
+            disabled={!bioPassword}
+          />
+        </View>
+      </Sheet>
       <Sheet visible={languageSheet} onClose={() => setLanguageSheet(false)}>
         <Text style={s.sheetTitle}>{t('settings.language')}</Text>
         <View style={{ marginTop: spacing.sm }}>
@@ -273,7 +356,19 @@ export default function SettingsScreen() {
 }
 
 /** Theme choice with a miniature preview of the palette. `preview: null` renders a split light/dark swatch. */
-function ThemeCard({ label, icon, selected, preview, onPress }: { label: string; icon: IconName; selected: boolean; preview: Theme | null; onPress: () => void }) {
+function ThemeCard({
+  label,
+  icon,
+  selected,
+  preview,
+  onPress,
+}: {
+  label: string;
+  icon: IconName;
+  selected: boolean;
+  preview: Theme | null;
+  onPress: () => void;
+}) {
   const s = useStyles();
   const { theme } = usePreferences();
   const swatch = (p: Theme, style?: object) => (
@@ -341,7 +436,14 @@ const useStyles = makeStyles(({ colors, elevation }) => ({
     backgroundColor: colors.surfaceAlt,
   },
   editText: { ...type.smallStrong, fontSize: 12, color: colors.text },
-  section: { ...type.tiny, color: colors.textSubtle, textTransform: 'uppercase', marginTop: spacing.lg, marginBottom: spacing.sm, marginLeft: 4 },
+  section: {
+    ...type.tiny,
+    color: colors.textSubtle,
+    textTransform: 'uppercase',
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+    marginLeft: 4,
+  },
   notice: { ...type.small, color: colors.danger, marginTop: spacing.sm, marginLeft: 4 },
   caption: { ...type.small, fontSize: 12, color: colors.textSubtle, marginTop: spacing.sm, marginLeft: 4 },
   group: { paddingVertical: spacing.xs },
@@ -363,6 +465,7 @@ const useStyles = makeStyles(({ colors, elevation }) => ({
   themeLabel: { ...type.smallStrong, color: colors.textMuted },
   version: { ...type.small, color: colors.textSubtle, textAlign: 'center', marginTop: spacing.xl },
   sheetTitle: { ...type.h2, color: colors.text },
+  sheetBody: { ...type.small, color: colors.textMuted, lineHeight: 19, marginTop: -6 },
   option: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.md },
   optionDivider: { borderTopWidth: 1, borderTopColor: colors.border },
   optionLabel: { ...type.bodyStrong, color: colors.text },

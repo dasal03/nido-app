@@ -6,7 +6,8 @@ import { Avatar } from '@/components/Avatar';
 import { GoalIcon } from '@/components/GoalIcon';
 import { Icon } from '@/components/Icon';
 import { TransactionRow } from '@/components/TransactionRow';
-import { Button, Card, EmptyState, IconButton, ProgressBar, ScreenHeader, useConfirm } from '@/components/ui';
+import { useConfirm } from '@/components/ConfirmDialog';
+import { Button, Card, EmptyState, IconButton, ProgressBar, ScreenHeader } from '@/components/ui';
 import { makeStyles, useT, useTheme } from '@/providers/Preferences';
 import { backend } from '@/services/backend';
 import { useMoney, useSavings } from '@/store/SavingsContext';
@@ -20,7 +21,7 @@ export default function GoalDetailScreen() {
   const { t, locale } = useT();
   const confirm = useConfirm();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { goals, transactions, savedFor, me, partner, memberColor } = useSavings();
+  const { goals, transactions, savedFor, me, members, memberColor } = useSavings();
   const money = useMoney();
   const goal = goals.find((g) => g.id === id);
 
@@ -30,7 +31,7 @@ export default function GoalDetailScreen() {
   const progress = goal.target > 0 ? saved / goal.target : 0;
   const remaining = Math.max(goal.target - saved, 0);
   const history = transactions.filter((tx) => tx.goalId === goal.id);
-  const byMember: Record<string, number> = { [me.id]: 0, [partner.id]: 0 };
+  const byMember: Record<string, number> = Object.fromEntries(members.map((m) => [m.id, 0]));
   for (const tx of history) if (tx.type === 'deposit') byMember[tx.by] = (byMember[tx.by] ?? 0) + tx.amount;
   const months = goal.deadline ? Math.max(monthsUntil(goal.deadline), 1) : 0;
   const done = remaining === 0;
@@ -81,12 +82,19 @@ export default function GoalDetailScreen() {
 
         <View style={s.actions}>
           <Button label={t('transfer.deposit')} icon="add" onPress={() => openTransfer('deposit')} style={{ flex: 1 }} />
-          <Button label={t('transfer.withdraw')} icon="withdraw" variant="secondary" onPress={() => openTransfer('withdraw')} disabled={saved <= 0} style={{ flex: 1 }} />
+          <Button
+            label={t('transfer.withdraw')}
+            icon="withdraw"
+            variant="secondary"
+            onPress={() => openTransfer('withdraw')}
+            disabled={saved <= 0}
+            style={{ flex: 1 }}
+          />
         </View>
 
         <Text style={s.section}>{t('goal.byPerson')}</Text>
         <Card style={{ gap: spacing.md }}>
-          {[me, partner].map((p) => (
+          {members.map((p) => (
             <View key={p.id} style={s.personRow}>
               <Avatar user={p} color={memberColor(p.id)} size={38} />
               <View style={{ flex: 1, gap: 6 }}>
@@ -125,7 +133,14 @@ const useStyles = makeStyles(({ colors }) => ({
   remaining: { ...type.bodyStrong, color: colors.textMuted },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   metaText: { ...type.small, color: colors.textMuted },
-  tip: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', backgroundColor: colors.accentSoft, borderRadius: radius.sm, padding: spacing.md - 4 },
+  tip: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'center',
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.sm,
+    padding: spacing.md - 4,
+  },
   tipText: { ...type.small, color: colors.text, lineHeight: 19, flex: 1 },
   actions: { flexDirection: 'row', gap: spacing.sm + 4, marginTop: spacing.md },
   section: { ...type.h2, color: colors.text, marginTop: spacing.lg + 4, marginBottom: spacing.sm + 4 },

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { CoupleAvatars } from '@/components/Avatar';
+import { NestAvatars } from '@/components/Avatar';
 import { LogoutButton } from '@/components/LogoutButton';
 import { BalanceCard } from '@/components/BalanceCard';
 import { DueContributions } from '@/components/DueContributions';
@@ -16,7 +16,7 @@ import { PetCard } from '@/components/PetCard';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Card, EmptyState, PressableScale, SectionHeader } from '@/components/ui';
 import { makeStyles, useT, useTheme } from '@/providers/Preferences';
-import { useMoney, useSavings, useSession } from '@/store/SavingsContext';
+import { useMoney, useSavings } from '@/store/SavingsContext';
 import { radius, spacing, type } from '@/theme';
 
 function greetingKey() {
@@ -31,8 +31,7 @@ export default function HomeScreen() {
   const { colors } = useTheme();
   const { t } = useT();
   const tabBarSpace = useTabBarSpace();
-  const { goals, transactions, commonFund, me, partner, couple } = useSavings();
-  const { nests } = useSession();
+  const { goals, transactions, commonFund, members, couple, nestName, needsMyApproval, pending } = useSavings();
   const [switcher, setSwitcher] = useState(false);
   const money = useMoney();
   const recent = transactions.slice(0, 4);
@@ -42,12 +41,12 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: tabBarSpace }]} showsVerticalScrollIndicator={false}>
         <View style={s.header}>
           <PressableScale style={s.headerLeft} onPress={() => setSwitcher(true)} accessibilityLabel={t('nests.switcherTitle')}>
-            <CoupleAvatars me={me} partner={partner} size={42} />
+            <NestAvatars users={members} size={42} />
             <View style={{ flexShrink: 1 }}>
               <Text style={s.greeting}>{t(greetingKey())}</Text>
               <View style={s.nestRow}>
                 <Text style={s.names} numberOfLines={1}>
-                  {nests[0]?.name ?? `${me.name} & ${partner.name}`}
+                  {nestName}
                 </Text>
                 <Icon name="chevron-down" size={16} color={colors.textMuted} strokeWidth={2.4} />
               </View>
@@ -60,6 +59,23 @@ export default function HomeScreen() {
         </View>
 
         <BalanceCard />
+        {pending.length > 0 && (
+          <PressableScale style={s.requestsBanner} onPress={() => router.navigate('/couple')} scaleTo={0.98}>
+            <View style={s.requestsIcon}>
+              <Icon name="handshake" size={20} color={colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.requestsTitle}>
+                {needsMyApproval.length
+                  ? t(needsMyApproval.length === 1 ? 'requests.bannerTitleOne' : 'requests.bannerTitle', { n: needsMyApproval.length })
+                  : t(pending.length === 1 ? 'requests.bannerWaitingOne' : 'requests.bannerWaiting', { n: pending.length })}
+              </Text>
+              <Text style={s.requestsBody}>{t('requests.bannerBody')}</Text>
+            </View>
+            {needsMyApproval.length > 0 && <View style={s.requestsDot} />}
+            <Icon name="chevron" size={18} color={colors.textSubtle} />
+          </PressableScale>
+        )}
         <DueContributions />
 
         <View style={s.quickActions}>
@@ -73,7 +89,11 @@ export default function HomeScreen() {
           <PetCard />
         </View>
 
-        <SectionHeader title={t('home.ourGoals')} action={goals.length ? t('home.seeAll') : undefined} onAction={() => router.push('/goals')} />
+        <SectionHeader
+          title={t('home.ourGoals')}
+          action={goals.length ? t('home.seeAll') : undefined}
+          onAction={() => router.push('/goals')}
+        />
         {goals.length === 0 ? (
           <PressableScale onPress={() => router.push('/new-goal')} style={s.newGoalCard}>
             <View style={s.newGoalIcon}>
@@ -111,7 +131,11 @@ export default function HomeScreen() {
           </View>
         )}
 
-        <SectionHeader title={t('home.recent')} action={recent.length ? t('home.seeAllActivity') : undefined} onAction={() => router.push('/activity')} />
+        <SectionHeader
+          title={t('home.recent')}
+          action={recent.length ? t('home.seeAllActivity') : undefined}
+          onAction={() => router.push('/activity')}
+        />
         <Card style={{ paddingVertical: spacing.xs }}>
           {recent.length === 0 ? (
             <EmptyState icon="sparkles" title={t('home.emptyTitle')} body={t('home.emptyBody')} />
@@ -175,7 +199,14 @@ const useStyles = makeStyles(({ colors, elevation }) => ({
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  addTileIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  addTileIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   addTileText: { ...type.smallStrong, color: colors.accent },
   newGoalCard: {
     flexDirection: 'row',
@@ -186,9 +217,39 @@ const useStyles = makeStyles(({ colors, elevation }) => ({
     padding: spacing.md,
     ...elevation,
   },
-  newGoalIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  newGoalIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   newGoalTitle: { ...type.h3, color: colors.text },
   newGoalBody: { ...type.small, color: colors.textMuted, marginTop: 2 },
+  requestsBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md - 4,
+    marginTop: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md - 2,
+    borderWidth: 1.5,
+    borderColor: colors.accentSoft,
+    ...elevation,
+  },
+  requestsIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestsTitle: { ...type.bodyStrong, color: colors.text },
+  requestsBody: { ...type.small, color: colors.textMuted, marginTop: 1 },
+  requestsDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.danger },
   fundCard: {
     flexDirection: 'row',
     gap: spacing.md - 4,

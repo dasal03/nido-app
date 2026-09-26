@@ -75,7 +75,8 @@ export function AvatarCropper({
     });
 
     let trackWidth = 1;
-    const zoomFromX = (x: number) => apply(1 + (Math.min(Math.max(x, 0), trackWidth) / trackWidth) * (MAX_ZOOM - 1), latest.current.tx, latest.current.ty);
+    const zoomFromX = (x: number) =>
+      apply(1 + (Math.min(Math.max(x, 0), trackWidth) / trackWidth) * (MAX_ZOOM - 1), latest.current.tx, latest.current.ty);
     const slider = PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
@@ -141,7 +142,12 @@ export function AvatarCropper({
 
         <View style={s.controls}>
           <View style={s.zoomRow}>
-            <PressableScale onPress={() => gestures.step(-0.5)} haptic={false} scaleTo={0.85} accessibilityLabel="Zoom out" style={s.zoomButton}>
+            <PressableScale
+              onPress={() => gestures.step(-0.5)}
+              haptic={false}
+              scaleTo={0.85}
+              accessibilityLabel="Zoom out"
+              style={s.zoomButton}>
               <Icon name="zoom-out" size={20} color="#FFFFFF" />
             </PressableScale>
             <View style={s.track} onLayout={(e) => gestures.setTrackWidth(e.nativeEvent.layout.width)} {...gestures.slider}>
@@ -150,7 +156,12 @@ export function AvatarCropper({
               </View>
               <View style={[s.thumb, { left: `${fill * 100}%` }]} pointerEvents="none" />
             </View>
-            <PressableScale onPress={() => gestures.step(0.5)} haptic={false} scaleTo={0.85} accessibilityLabel="Zoom in" style={s.zoomButton}>
+            <PressableScale
+              onPress={() => gestures.step(0.5)}
+              haptic={false}
+              scaleTo={0.85}
+              accessibilityLabel="Zoom in"
+              style={s.zoomButton}>
               <Icon name="zoom-in" size={20} color="#FFFFFF" />
             </PressableScale>
           </View>
@@ -166,15 +177,35 @@ export function AvatarCropper({
 
 const useStyles = makeStyles(() => ({
   safe: { flex: 1, backgroundColor: '#05080F' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingTop: spacing.sm },
-  close: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  close: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: { ...type.h3, color: '#FFFFFF' },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg },
   viewport: { overflow: 'hidden', borderRadius: radius.md, backgroundColor: '#111723' },
   hint: { ...type.small, color: 'rgba(255,255,255,0.6)' },
   controls: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.lg },
   zoomRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  zoomButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+  zoomButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   track: { flex: 1, height: 40, justifyContent: 'center' },
   trackLine: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.18)', overflow: 'hidden' },
   trackFill: { height: '100%', backgroundColor: '#FFFFFF' },
@@ -185,11 +216,7 @@ const useStyles = makeStyles(() => ({
     marginLeft: -11,
     borderRadius: 11,
     backgroundColor: '#FFFFFF',
-    shadowColor: '#000000',
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.3)',
   },
   confirm: {
     height: 56,

@@ -4,7 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/Avatar';
 import { GoalIcon } from '@/components/GoalIcon';
-import { IconButton, Button, Card, EmptyState, ScreenHeader, useConfirm } from '@/components/ui';
+import { useConfirm } from '@/components/ConfirmDialog';
+import { IconButton, Button, Card, EmptyState, ScreenHeader } from '@/components/ui';
 import { makeStyles, useT, useTheme } from '@/providers/Preferences';
 import { backend } from '@/services/backend';
 import { useMoney, useSavings } from '@/store/SavingsContext';
@@ -27,7 +28,11 @@ export default function RecurringScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
-      <ScreenHeader title={t('recurring.title')} onLeading={goBack} trailing={<IconButton icon="add" label={t('recurring.new')} onPress={() => router.push('/new-recurring')} />} />
+      <ScreenHeader
+        title={t('recurring.title')}
+        onLeading={goBack}
+        trailing={<IconButton icon="add" label={t('recurring.new')} onPress={() => router.push('/new-recurring')} />}
+      />
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         <Text style={s.intro}>{t('recurring.subtitle')}</Text>
         {rules.length === 0 ? (
@@ -88,7 +93,9 @@ function RuleCard({ rule }: { rule: RecurringRule }) {
           <IconButton
             icon="trash"
             label={t('common.delete')}
-            onPress={() => confirm(t('recurring.deleteTitle'), t('recurring.deleteBody'), t('common.delete'), () => backend.deleteRecurring(rule.id))}
+            onPress={() =>
+              confirm(t('recurring.deleteTitle'), t('recurring.deleteBody'), t('common.delete'), () => backend.deleteRecurring(rule.id))
+            }
           />
         )}
       </View>
@@ -104,6 +111,13 @@ const useStyles = makeStyles(({ colors }) => ({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md - 4 },
   amount: { ...type.h3, fontSize: 18, fontFamily: type.h2.fontFamily, color: colors.text },
   meta: { ...type.small, color: colors.textMuted, marginTop: 2 },
-  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.sm,
+  },
   next: { ...type.smallStrong, color: colors.textMuted, flex: 1 },
 }));

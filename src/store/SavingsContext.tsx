@@ -1,27 +1,40 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 
 import { backend } from '@/services/backend';
-import { useTheme } from '@/providers/Preferences';
+import { useT, useTheme } from '@/providers/Preferences';
+import { memberPalette } from '@/theme';
 import { formatMoney } from '@/utils/format';
 import type { Couple, User } from './types';
 
 export interface Nest {
   couple: Couple;
-  partner: User;
-  /** Custom name, or "Me & Partner". */
+  /** Everyone in the nest, the signed-in user first. */
+  members: User[];
+  /** The other members (for a couple, just the partner). */
+  others: User[];
+  /** The couple's partner, or the first other member of a family. */
+  partner: User | null;
+  /** Custom name, "Diego y Angélica" for a couple, or the family's name. */
   name: string;
 }
 
 interface Session {
   user: User | null;
-  /** The active nest's couple and partner. */
+  /** The active nest. */
   couple: Couple | null;
   partner: User | null;
+  nest: Nest | null;
   /** Every nest the user belongs to, active first. */
   nests: Nest[];
-  /** Nests the user unlinked from, newest first (read-only history). */
+  /** Nests that were dissolved or left, newest first (read-only history). */
   archived: Nest[];
 }
+
+export const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
+
+/** "Diego", "Diego y Angie", "Diego, Angie y Ana". */
+export const joinNames = (names: string[], and: string) =>
+  names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} ${and} ${names[names.length - 1]}`;
 
 const SessionContext = createContext<Session | null>(null);
 
@@ -31,27 +44,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     backend.init().finally(() => setReady(true));
   }, []);
 
+  const { t } = useT();
   const db = useSyncExternalStore(backend.subscribe, backend.getSnapshot, backend.getSnapshot);
   const session = useMemo<Session>(() => {
     const user = db.sessionUserId ? (db.users[db.sessionUserId] ?? null) : null;
+    const toNest = (couple: Couple): Nest | null => {
+      if (!user || !couple.memberIds.includes(user.id)) return null;
+      const others = couple.memberIds.filter((id) => id !== user.id).flatMap((id) => (db.users[id] ? [db.users[id]] : []));
+      if (couple.kind === 'couple' && !others.length) return null;
+      const fallback =
+        couple.kind === 'family' ? t('family.defaultName') : [user, ...others].map((m) => firstName(m.name)).join(` ${t('common.and')} `);
+      return { couple, members: [user, ...others], others, partner: others[0] ?? null, name: couple.name ?? fallback };
+    };
     const nests: Nest[] = [];
     for (const id of user?.coupleIds ?? []) {
       const couple = db.couples[id];
-      const partner = db.users[couple?.memberIds.find((m) => m !== user?.id) ?? ''];
-      if (!user || !couple || couple.archivedAt || !partner) continue;
-      nests.push({ couple, partner, name: couple.name ?? `${user.name} & ${partner.name}` });
+      const nest = couple && !couple.archivedAt ? toNest(couple) : null;
+      if (nest) nests.push(nest);
     }
     nests.sort((a, b) => Number(b.couple.id === user?.activeCoupleId) - Number(a.couple.id === user?.activeCoupleId));
     const active = nests.find((n) => n.couple.id === user?.activeCoupleId) ?? null;
     const archived: Nest[] = [];
     for (const couple of Object.values(db.couples)) {
-      if (!user || !couple.archivedAt || !couple.memberIds.includes(user.id)) continue;
-      const partner = db.users[couple.memberIds.find((m) => m !== user.id) ?? ''];
-      if (partner) archived.push({ couple, partner, name: couple.name ?? `${user.name} & ${partner.name}` });
+      const nest = couple.archivedAt ? toNest(couple) : null;
+      if (nest) archived.push(nest);
     }
     archived.sort((a, b) => (b.couple.archivedAt ?? '').localeCompare(a.couple.archivedAt ?? ''));
-    return { user, couple: active?.couple ?? null, partner: active?.partner ?? null, nests, archived };
-  }, [db]);
+    return { user, couple: active?.couple ?? null, partner: active?.partner ?? null, nest: active, nests, archived };
+  }, [db, t]);
 
   if (!ready) return null;
   return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
@@ -63,32 +83,42 @@ export function useSession() {
   return ctx;
 }
 
-/** Savings data for the signed-in, linked couple. Only use on screens behind the "linked" guard. */
+/** Savings data for the signed-in user's active nest. Only use on screens behind the "linked" guard. */
 export function useSavings() {
-  const { user, couple, partner } = useSession();
+  const { user, nest } = useSession();
   const { colors } = useTheme();
-  if (!user || !couple || !partner) throw new Error('useSavings requires a linked couple');
+  const { t } = useT();
+  if (!user || !nest) throw new Error('useSavings requires an active nest');
 
   return useMemo(() => {
+    const { couple, members, others, partner } = nest;
     const byGoal = new Map<string | null, number>();
-    const byMember: Record<string, number> = { [user.id]: 0, [partner.id]: 0 };
+    const byMember: Record<string, number> = Object.fromEntries(members.map((m) => [m.id, 0]));
     let balance = 0;
     let thisMonth = 0;
     const now = new Date();
 
-    for (const t of couple.transactions) {
-      const v = t.type === 'deposit' ? t.amount : -t.amount;
+    for (const tx of couple.transactions) {
+      const v = tx.type === 'deposit' ? tx.amount : -tx.amount;
       balance += v;
-      byGoal.set(t.goalId, (byGoal.get(t.goalId) ?? 0) + v);
-      if (t.type === 'deposit') byMember[t.by] = (byMember[t.by] ?? 0) + t.amount;
-      const d = new Date(t.date);
+      byGoal.set(tx.goalId, (byGoal.get(tx.goalId) ?? 0) + v);
+      if (tx.type === 'deposit') byMember[tx.by] = (byMember[tx.by] ?? 0) + tx.amount;
+      const d = new Date(tx.date);
       if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) thisMonth += v;
     }
 
-    const member = (id: string) => (id === user.id ? user : partner);
+    const palette = memberPalette(colors);
+    const index = new Map(members.map((m, i) => [m.id, i]));
+    /** People who left a family keep their movements; they show as "former member". */
+    const formerMember = (id: string): User => ({ ...user, id, name: t('family.formerMember'), username: '', photo: null, code: '' });
+    const pending = couple.requests.filter((r) => r.status === 'pending');
     return {
       me: user,
       partner,
+      members,
+      others,
+      isFamily: couple.kind === 'family',
+      nestName: nest.name,
       couple,
       currency: couple.currency,
       goals: couple.goals,
@@ -99,10 +129,13 @@ export function useSavings() {
       byMember,
       commonFund: byGoal.get(null) ?? 0,
       savedFor: (goalId: string | null) => byGoal.get(goalId) ?? 0,
-      member,
-      memberColor: (id: string) => (id === user.id ? colors.me : colors.partner),
+      member: (id: string) => members.find((m) => m.id === id) ?? formerMember(id),
+      memberColor: (id: string) => (index.has(id) ? palette[index.get(id)! % palette.length] : colors.textSubtle),
+      /** Pending approval requests, and those waiting for the signed-in user. */
+      pending,
+      needsMyApproval: pending.filter((r) => !r.approvals.includes(user.id)),
     };
-  }, [user, couple, partner, colors]);
+  }, [user, nest, colors, t]);
 }
 
 /** Returns a formatter bound to the couple's savings currency. */

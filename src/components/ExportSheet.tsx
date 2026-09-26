@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
 import { makeStyles, useT, useTheme } from '@/providers/Preferences';
-import { useSavings, useSession } from '@/store/SavingsContext';
+import { useSavings } from '@/store/SavingsContext';
 import { radius, spacing, type } from '@/theme';
 import { exportCsv, exportPdf } from '@/utils/export';
 import { Icon, type IconName } from './Icon';
@@ -13,17 +13,15 @@ import { ErrorBanner, PressableScale } from './ui';
 export function ExportSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const s = useStyles();
   const { t, locale } = useT();
-  const { couple, me, partner } = useSavings();
-  const { nests } = useSession();
+  const { couple, members, nestName } = useSavings();
   const [busy, setBusy] = useState<'csv' | 'pdf' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const nestName = nests[0]?.name ?? `${me.name} & ${partner.name}`;
 
   const run = async (kind: 'csv' | 'pdf') => {
     setBusy(kind);
     setError(null);
     try {
-      const input = { couple, nestName, members: [me, partner], t, locale };
+      const input = { couple, nestName, members, t, locale };
       await (kind === 'csv' ? exportCsv(input) : exportPdf(input));
       onClose();
     } catch {
@@ -46,12 +44,26 @@ export function ExportSheet({ visible, onClose }: { visible: boolean; onClose: (
   );
 }
 
-function Option({ icon, label, hint, loading, onPress }: { icon: IconName; label: string; hint: string; loading: boolean; onPress: () => void }) {
+function Option({
+  icon,
+  label,
+  hint,
+  loading,
+  onPress,
+}: {
+  icon: IconName;
+  label: string;
+  hint: string;
+  loading: boolean;
+  onPress: () => void;
+}) {
   const s = useStyles();
   const { colors } = useTheme();
   return (
     <PressableScale onPress={onPress} disabled={loading} scaleTo={0.98} style={s.option}>
-      <View style={s.optionIcon}>{loading ? <ActivityIndicator color={colors.accent} /> : <Icon name={icon} size={22} color={colors.accent} />}</View>
+      <View style={s.optionIcon}>
+        {loading ? <ActivityIndicator color={colors.accent} /> : <Icon name={icon} size={22} color={colors.accent} />}
+      </View>
       <View style={{ flex: 1 }}>
         <Text style={s.optionLabel}>{label}</Text>
         <Text style={s.optionHint}>{hint}</Text>
@@ -65,8 +77,22 @@ const useStyles = makeStyles(({ colors }) => ({
   title: { ...type.h2, color: colors.text },
   subtitle: { ...type.small, color: colors.textMuted, marginTop: 2 },
   options: { gap: spacing.sm + 2, marginVertical: spacing.lg },
-  option: { flexDirection: 'row', alignItems: 'center', gap: spacing.md - 2, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md },
-  optionIcon: { width: 46, height: 46, borderRadius: 16, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md - 2,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  optionIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   optionLabel: { ...type.bodyStrong, color: colors.text },
   optionHint: { ...type.small, color: colors.textMuted, marginTop: 1 },
 }));

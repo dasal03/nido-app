@@ -4,21 +4,21 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { makeStyles, usePreferences, useT, useTheme } from '@/providers/Preferences';
-import { useMoney, useSavings } from '@/store/SavingsContext';
+import { firstName, useMoney, useSavings } from '@/store/SavingsContext';
 import { radius, spacing, type } from '@/theme';
 import { Icon } from './Icon';
 import { PressableScale, tap } from './ui';
 
 export function BalanceCard() {
-  const { balance, thisMonth, byMember, me, partner } = useSavings();
+  const { balance, thisMonth, byMember, members, memberColor } = useSavings();
   const { colors } = useTheme();
   const { t } = useT();
   const s = useStyles();
   const money = useMoney();
   const { prefs } = usePreferences();
   const [hidden, setHidden] = useState(prefs.hideBalances);
-  const totalIn = byMember[me.id] + byMember[partner.id];
-  const myShare = totalIn > 0 ? byMember[me.id] / totalIn : 0.5;
+  const totalIn = members.reduce((sum, m) => sum + (byMember[m.id] ?? 0), 0);
+  const shareOf = (id: string) => (totalIn > 0 ? (byMember[id] ?? 0) / totalIn : 1 / members.length);
   const mask = (v: string) => (hidden ? '••••' : v);
 
   return (
@@ -45,12 +45,20 @@ export function BalanceCard() {
       </View>
 
       <View style={s.split}>
-        <View style={[s.splitBar, { flex: myShare, backgroundColor: colors.me }]} />
-        <View style={[s.splitBar, { flex: 1 - myShare, backgroundColor: colors.partner }]} />
+        {members.map((m) => (
+          <View key={m.id} style={[s.splitBar, { flex: shareOf(m.id), backgroundColor: memberColor(m.id) }]} />
+        ))}
       </View>
       <View style={s.legend}>
-        <Legend color={colors.me} name={me.name} value={mask(money(byMember[me.id], { compact: true }))} />
-        <Legend color={colors.partner} name={partner.name} value={mask(money(byMember[partner.id], { compact: true }))} end />
+        {members.map((m, i) => (
+          <Legend
+            key={m.id}
+            color={memberColor(m.id)}
+            name={firstName(m.name)}
+            value={mask(money(byMember[m.id] ?? 0, { compact: true }))}
+            end={members.length === 2 && i === 1}
+          />
+        ))}
       </View>
 
       <View style={s.actions}>
@@ -114,7 +122,14 @@ const useStyles = makeStyles(() => ({
   monthText: { ...type.smallStrong, color: '#FFFFFF' },
   split: { flexDirection: 'row', height: 6, marginTop: spacing.lg, gap: 4 },
   splitBar: { borderRadius: 3 },
-  legend: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.sm + 2 },
+  legend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: spacing.sm,
+    columnGap: spacing.md,
+    marginTop: spacing.sm + 2,
+  },
   dot: { width: 8, height: 8, borderRadius: 4 },
   legendName: { ...type.small, color: 'rgba(255,255,255,0.78)' },
   legendValue: { ...type.h3, color: '#FFFFFF', marginTop: 2 },

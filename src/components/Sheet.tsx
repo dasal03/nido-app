@@ -20,7 +20,9 @@ export function Sheet({ visible, onClose, children }: { visible: boolean; onClos
     if (visible) {
       Animated.spring(progress, { toValue: 1, useNativeDriver: NATIVE_DRIVER, speed: 16, bounciness: 4 }).start();
     } else {
-      Animated.timing(progress, { toValue: 0, duration: 180, useNativeDriver: NATIVE_DRIVER }).start(({ finished }) => finished && setMounted(false));
+      Animated.timing(progress, { toValue: 0, duration: 180, useNativeDriver: NATIVE_DRIVER }).start(
+        ({ finished }) => finished && setMounted(false),
+      );
     }
   }, [visible, progress]);
 
@@ -33,7 +35,7 @@ export function Sheet({ visible, onClose, children }: { visible: boolean; onClos
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
       </Animated.View>
       <View style={s.anchor} pointerEvents="box-none">
-        <Animated.View style={[s.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm, transform: [{ translateY }] }]}>
+        <Animated.View style={[s.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) + spacing.md, transform: [{ translateY }] }]}>
           <View style={s.handle} />
           {children}
         </Animated.View>

@@ -3,6 +3,7 @@ import { LayoutAnimation, Platform, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { makeStyles, useTheme } from '@/providers/Preferences';
+import { useSession } from '@/store/SavingsContext';
 import { radius, type } from '@/theme';
 import { Icon, type IconName } from './Icon';
 import { PressableScale, tap } from './ui';
@@ -28,6 +29,8 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const s = useStyles();
+  const { couple } = useSession();
+  const iconFor = (name: string): IconName => (name === 'couple' && couple?.kind === 'family' ? 'users' : ICONS[name]);
 
   return (
     <View pointerEvents="box-none" style={[s.wrap, { bottom: Math.max(insets.bottom, 16) }]}>
@@ -54,7 +57,12 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               scaleTo={0.9}
               onPress={onPress}
               style={[s.item, focused && s.itemActive]}>
-              <Icon name={ICONS[route.name] ?? 'sparkles'} size={21} color={focused ? colors.tabActiveIcon : colors.tabIcon} strokeWidth={focused ? 2.4 : 2} />
+              <Icon
+                name={iconFor(route.name) ?? 'sparkles'}
+                size={21}
+                color={focused ? colors.tabActiveIcon : colors.tabIcon}
+                strokeWidth={focused ? 2.4 : 2}
+              />
               {focused && (
                 <Text style={s.label} numberOfLines={1}>
                   {label}
@@ -80,16 +88,7 @@ const useStyles = makeStyles(({ colors, dark }) => ({
     backgroundColor: colors.tabBar,
     borderWidth: dark ? 1 : 0,
     borderColor: colors.border,
-    ...Platform.select({
-      web: { boxShadow: dark ? '0 12px 32px rgba(0,0,0,0.5)' : '0 12px 32px rgba(10,31,92,0.35)' },
-      default: {
-        shadowColor: dark ? '#000000' : colors.tabBar,
-        shadowOpacity: dark ? 0.5 : 0.35,
-        shadowRadius: 20,
-        shadowOffset: { width: 0, height: 10 },
-        elevation: 12,
-      },
-    }),
+    boxShadow: dark ? '0px 12px 32px rgba(0, 0, 0, 0.5)' : '0px 12px 28px rgba(10, 31, 92, 0.3)',
   },
   item: {
     height: 48,

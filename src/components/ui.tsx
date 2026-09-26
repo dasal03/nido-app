@@ -2,8 +2,8 @@ import * as Haptics from 'expo-haptics';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -22,26 +22,14 @@ import { Icon, type IconName } from './Icon';
 
 const NATIVE_DRIVER = Platform.OS !== 'web';
 
+/** Removes the browser's own focus ring on inputs (the field border already shows focus). */
+export const WEB_NO_OUTLINE = (Platform.OS === 'web' ? { outlineStyle: 'none', outlineWidth: 0 } : {}) as object;
+
 export function tap(style: 'light' | 'success' | 'selection' = 'light') {
   if (Platform.OS === 'web') return;
   if (style === 'success') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   else if (style === 'selection') Haptics.selectionAsync().catch(() => {});
   else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-}
-
-/** Returns a cross-platform destructive confirmation (Alert buttons are no-ops on web). */
-export function useConfirm() {
-  const { t } = useT();
-  return (title: string, message: string, confirmLabel: string, onConfirm: () => void) => {
-    if (Platform.OS === 'web') {
-      if (window.confirm(`${title}\n\n${message}`)) onConfirm();
-      return;
-    }
-    Alert.alert(title, message, [
-      { text: t('common.cancel'), style: 'cancel' },
-      { text: confirmLabel, style: 'destructive', onPress: onConfirm },
-    ]);
-  };
 }
 
 /** Pressable with a springy scale-down and a light haptic — the base of every tappable surface. */
@@ -86,7 +74,21 @@ export function Card({ children, style }: { children: ReactNode; style?: StylePr
   return <View style={[s.card, style]}>{children}</View>;
 }
 
-const LAYOUT_KEYS = new Set(['flex', 'flexGrow', 'flexShrink', 'flexBasis', 'alignSelf', 'width', 'minWidth', 'maxWidth', 'position', 'top', 'left', 'right', 'bottom']);
+const LAYOUT_KEYS = new Set([
+  'flex',
+  'flexGrow',
+  'flexShrink',
+  'flexBasis',
+  'alignSelf',
+  'width',
+  'minWidth',
+  'maxWidth',
+  'position',
+  'top',
+  'left',
+  'right',
+  'bottom',
+]);
 
 /** Splits a style into layout props (for the outer touch target) and visual props (for the animated surface). */
 function splitLayout(style: StyleProp<ViewStyle>) {
@@ -148,7 +150,17 @@ export function Button({
   );
 }
 
-export function IconButton({ icon, onPress, label, tone = 'surface' }: { icon: IconName; onPress: () => void; label: string; tone?: 'surface' | 'glass' }) {
+export function IconButton({
+  icon,
+  onPress,
+  label,
+  tone = 'surface',
+}: {
+  icon: IconName;
+  onPress: () => void;
+  label: string;
+  tone?: 'surface' | 'glass';
+}) {
   const s = useStyles();
   const { colors } = useTheme();
   return (
@@ -232,7 +244,17 @@ export function ProgressBar({ progress, color, height = 8, track }: { progress: 
   );
 }
 
-export function Chip({ label, selected, onPress, leading }: { label: string; selected: boolean; onPress: () => void; leading?: ReactNode }) {
+export function Chip({
+  label,
+  selected,
+  onPress,
+  leading,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  leading?: ReactNode;
+}) {
   const s = useStyles();
   return (
     <PressableScale
@@ -293,17 +315,33 @@ export function Segmented<T extends string>({
   );
 }
 
-export function TextField({ label, icon, secure, editable = true, ...input }: TextInputProps & { label: string; icon: IconName; secure?: boolean }) {
+/** Validation state shown under a field: an error, a success/"checking" note, or nothing. */
+export type FieldStatus = { error?: string | null; success?: string | null; pending?: string | null };
+
+export function TextField({
+  label,
+  icon,
+  secure,
+  editable = true,
+  error,
+  success,
+  pending,
+  prefix,
+  ...input
+}: TextInputProps & FieldStatus & { label: string; icon?: IconName; secure?: boolean; prefix?: ReactNode }) {
   const s = useStyles();
   const { colors, dark } = useTheme();
   const { t } = useT();
   const [hidden, setHidden] = useState(true);
   const [focused, setFocused] = useState(false);
+  const tint = error ? colors.danger : success ? colors.success : focused ? colors.accent : colors.textSubtle;
   return (
     <View style={{ gap: 6 }}>
       <Text style={s.fieldLabel}>{label}</Text>
-      <View style={[s.field, focused && s.fieldFocused, !editable && s.fieldDisabled]}>
-        <Icon name={icon} size={18} color={focused ? colors.accent : colors.textSubtle} />
+      <View
+        style={[s.field, focused && s.fieldFocused, !!success && s.fieldSuccess, !!error && s.fieldError, !editable && s.fieldDisabled]}>
+        {prefix}
+        {icon && <Icon name={icon} size={18} color={tint} />}
         <TextInput
           {...input}
           editable={editable}
@@ -320,12 +358,80 @@ export function TextField({ label, icon, secure, editable = true, ...input }: Te
           }}
           style={[s.fieldInput, !editable && { color: colors.textMuted }]}
         />
+        {pending ? (
+          <ActivityIndicator size="small" color={colors.textSubtle} />
+        ) : success ? (
+          <Icon name="check-circle" size={18} color={colors.success} />
+        ) : null}
         {secure && (
-          <Pressable onPress={() => setHidden((h) => !h)} hitSlop={8} accessibilityLabel={t(hidden ? 'auth.showPassword' : 'auth.hidePassword')}>
+          <Pressable
+            onPress={() => setHidden((h) => !h)}
+            hitSlop={8}
+            accessibilityLabel={t(hidden ? 'auth.showPassword' : 'auth.hidePassword')}>
             <Icon name={hidden ? 'eye' : 'eye-off'} size={20} color={colors.textSubtle} />
           </Pressable>
         )}
       </View>
+      <FieldMessage error={error} success={success} pending={pending} />
+    </View>
+  );
+}
+
+export function FieldMessage({ error, success, pending }: FieldStatus) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const text = error ?? pending ?? success;
+  // A blank success (' ') only marks the field as valid (green border + check), without a message.
+  if (!text?.trim()) return null;
+  const color = error ? colors.danger : pending ? colors.textMuted : colors.success;
+  return (
+    <View style={s.fieldMessage} accessibilityLiveRegion="polite">
+      {error && <Icon name="alert" size={14} color={color} />}
+      <Text style={[s.fieldMessageText, { color }]}>{text}</Text>
+    </View>
+  );
+}
+
+/** Field-looking button that opens a picker (country, document type, date, gender…). */
+export function SelectField({
+  label,
+  icon,
+  value,
+  placeholder,
+  onPress,
+  error,
+  leading,
+  disabled,
+}: FieldStatus & {
+  label: string;
+  icon?: IconName;
+  value: string | null;
+  placeholder: string;
+  onPress: () => void;
+  leading?: ReactNode;
+  disabled?: boolean;
+}) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={s.fieldLabel}>{label}</Text>
+      <PressableScale
+        onPress={onPress}
+        disabled={disabled}
+        haptic={false}
+        scaleTo={0.99}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={[s.field, !!error && s.fieldError, disabled && s.fieldDisabled]}>
+        {leading}
+        {icon && !leading && <Icon name={icon} size={18} color={error ? colors.danger : colors.textSubtle} />}
+        <Text style={[s.selectText, !value && { color: colors.textSubtle }]} numberOfLines={1}>
+          {value ?? placeholder}
+        </Text>
+        {!disabled && <Icon name="chevron-down" size={18} color={colors.textSubtle} />}
+      </PressableScale>
+      <FieldMessage error={error} />
     </View>
   );
 }
@@ -339,6 +445,39 @@ export function ErrorBanner({ message }: { message: string | null }) {
       <Icon name="alert" size={18} color={colors.danger} />
       <Text style={s.errorText}>{message}</Text>
     </View>
+  );
+}
+
+/** Positive confirmation (e.g. "Account created, check your email"). */
+export function SuccessBanner({ title, message }: { title: string; message: string }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  return (
+    <View style={s.success} accessibilityRole="alert">
+      <View style={s.successIcon}>
+        <Icon name="mail" size={18} color={colors.success} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={s.successTitle}>{title}</Text>
+        <Text style={s.successText}>{message}</Text>
+      </View>
+    </View>
+  );
+}
+
+/** Full-screen, non-dismissable "working on it" overlay for requests like sign-up. */
+export function LoadingOverlay({ visible, message }: { visible: boolean; message: string }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  return (
+    <Modal transparent visible={visible} animationType="fade" statusBarTranslucent>
+      <View style={s.overlay}>
+        <View style={s.overlayCard}>
+          <ActivityIndicator size="large" color={colors.accent} />
+          <Text style={s.overlayText}>{message}</Text>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -439,8 +578,35 @@ const useStyles = makeStyles(({ colors, elevation }) => ({
     backgroundColor: colors.surface,
   },
   fieldFocused: { borderColor: colors.accent },
+  fieldSuccess: { borderColor: colors.success },
+  fieldError: { borderColor: colors.danger },
+  selectText: { flex: 1, minWidth: 0, ...type.body, color: colors.text },
+  fieldMessage: { flexDirection: 'row', alignItems: 'center', gap: 5, marginLeft: 2 },
+  fieldMessageText: { ...type.small, fontSize: 12, flex: 1 },
+  success: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md - 4,
+    backgroundColor: colors.successSoft,
+    borderRadius: radius.md,
+    padding: spacing.md - 2,
+  },
+  successIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  successTitle: { ...type.bodyStrong, color: colors.success },
+  successText: { ...type.small, color: colors.text, marginTop: 2, lineHeight: 18 },
+  overlay: { flex: 1, backgroundColor: 'rgba(5, 8, 15, 0.45)', alignItems: 'center', justifyContent: 'center' },
+  overlayCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.md,
+    minWidth: 200,
+  },
+  overlayText: { ...type.bodyStrong, color: colors.text, textAlign: 'center' },
   fieldDisabled: { backgroundColor: colors.surfaceAlt, borderColor: colors.surfaceAlt },
-  fieldInput: { flex: 1, minWidth: 0, height: '100%', ...type.body, color: colors.text, outlineWidth: 0 },
+  fieldInput: { flex: 1, minWidth: 0, height: '100%', ...type.body, color: colors.text, ...WEB_NO_OUTLINE },
   error: {
     flexDirection: 'row',
     alignItems: 'center',

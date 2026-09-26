@@ -8,10 +8,10 @@ import { useSession, type Nest } from '@/store/SavingsContext';
 import { radius, spacing, type } from '@/theme';
 import { formatMoney, formatShortDate } from '@/utils/format';
 import { useAction } from '@/utils/useAction';
-import { CoupleAvatars } from './Avatar';
+import { NestAvatars } from './Avatar';
 import { Icon } from './Icon';
 import { Sheet } from './Sheet';
-import { Button, ErrorBanner, PressableScale, TextField, tap, useConfirm } from './ui';
+import { Button, ErrorBanner, PressableScale, TextField, tap } from './ui';
 
 const balanceOf = (nest: Nest) =>
   formatMoney(
@@ -28,13 +28,16 @@ export function NestRow({ nest, active, onPress, divider }: { nest: Nest; active
   if (!user) return null;
   return (
     <PressableScale onPress={onPress} scaleTo={0.985} style={[s.row, divider && s.divider]}>
-      <CoupleAvatars me={user} partner={nest.partner} size={36} ring={colors.surface} />
+      <NestAvatars users={nest.members} size={36} ring={colors.surface} max={3} />
       <View style={{ flex: 1 }}>
         <Text style={s.rowName} numberOfLines={1}>
           {nest.name}
         </Text>
         <Text style={s.rowMeta} numberOfLines={1}>
-          {balanceOf(nest)} · @{nest.partner.username}
+          {balanceOf(nest)} ·{' '}
+          {nest.couple.kind === 'family'
+            ? t(nest.members.length === 1 ? 'nest.familyMembersOne' : 'nest.familyMembers', { n: nest.members.length })
+            : `@${nest.partner?.username ?? ''}`}
         </Text>
       </View>
       {active ? (
@@ -86,7 +89,13 @@ export function NestSwitcherSheet({ visible, onClose }: { visible: boolean; onCl
       <Text style={s.subtitle}>{t('nests.switcherSubtitle')}</Text>
       <View style={s.list}>
         {nests.map((nest, i) => (
-          <NestRow key={nest.couple.id} nest={nest} active={nest.couple.id === user?.activeCoupleId} onPress={() => choose(nest)} divider={i > 0} />
+          <NestRow
+            key={nest.couple.id}
+            nest={nest}
+            active={nest.couple.id === user?.activeCoupleId}
+            onPress={() => choose(nest)}
+            divider={i > 0}
+          />
         ))}
         <AddNestRow
           onPress={() => {
@@ -105,7 +114,6 @@ export function NestActionsSheet({ nest, onClose }: { nest: Nest | null; onClose
   const { colors } = useTheme();
   const { t, locale } = useT();
   const { user } = useSession();
-  const confirm = useConfirm();
   const [name, setName] = useState(nest?.couple.name ?? '');
   const rename = useAction(backend.renameCouple);
   const [shown, setShown] = useState(nest);
@@ -115,13 +123,18 @@ export function NestActionsSheet({ nest, onClose }: { nest: Nest | null; onClose
     setName(nest.couple.name ?? '');
   }
 
-  if (!shown || !user) return <Sheet visible={false} onClose={onClose}>{null}</Sheet>;
+  if (!shown || !user)
+    return (
+      <Sheet visible={false} onClose={onClose}>
+        {null}
+      </Sheet>
+    );
   const active = shown.couple.id === user.activeCoupleId;
 
   return (
     <Sheet visible={!!nest} onClose={onClose}>
       <View style={s.nestHeader}>
-        <CoupleAvatars me={user} partner={shown.partner} size={52} ring={colors.surface} />
+        <NestAvatars users={shown.members} size={52} ring={colors.surface} />
         <View style={{ flex: 1 }}>
           <Text style={s.title} numberOfLines={1}>
             {shown.name}
@@ -144,7 +157,7 @@ export function NestActionsSheet({ nest, onClose }: { nest: Nest | null; onClose
       )}
 
       <View style={{ gap: spacing.sm + 2 }}>
-        <TextField label={t('nests.rename')} icon="edit" value={name} onChangeText={setName} placeholder={shown.name} maxLength={28} />
+        <TextField label={t('nests.rename')} icon="edit" value={name} onChangeText={setName} placeholder={shown.name} maxLength={40} />
         <ErrorBanner message={rename.error} />
         <Button
           label={t('nests.save')}
@@ -161,16 +174,15 @@ export function NestActionsSheet({ nest, onClose }: { nest: Nest | null; onClose
       </View>
 
       <PressableScale
-        style={s.unlink}
+        style={s.manage}
         scaleTo={0.98}
-        onPress={() =>
-          confirm(t('nests.unlinkTitle', { name: shown.partner.name }), t('nests.unlinkBody'), t('nests.unlink'), async () => {
-            await backend.unlinkCouple(shown.couple.id);
-            onClose();
-          })
-        }>
-        <Icon name="unlink" size={18} color={colors.danger} />
-        <Text style={s.unlinkText}>{t('nests.unlink')}</Text>
+        onPress={async () => {
+          if (!active) await backend.setActiveCouple(shown.couple.id);
+          onClose();
+          router.navigate('/couple');
+        }}>
+        <Icon name="settings" size={18} color={colors.accent} />
+        <Text style={s.manageText}>{t('nests.manageNest')}</Text>
       </PressableScale>
     </Sheet>
   );
@@ -196,15 +208,15 @@ const useStyles = makeStyles(({ colors }) => ({
   activeText: { ...type.tiny, color: colors.success },
   addIcon: { width: 60, height: 36, borderRadius: 18, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' },
   nestHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg },
-  unlink: {
+  manage: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
     height: 50,
     borderRadius: radius.pill,
-    backgroundColor: colors.dangerSoft,
+    backgroundColor: colors.accentSoft,
     marginTop: spacing.lg,
   },
-  unlinkText: { ...type.bodyStrong, color: colors.danger },
+  manageText: { ...type.bodyStrong, color: colors.accent },
 }));

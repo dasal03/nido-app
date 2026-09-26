@@ -24,7 +24,12 @@ export function TransactionSheet({ txId, onClose }: { txId: string | null; onClo
   const [draft, setDraft] = useState('');
   const tx: Transaction | undefined = transactions.find((x) => x.id === txId);
 
-  if (!tx) return <Sheet visible={false} onClose={onClose}>{null}</Sheet>;
+  if (!tx)
+    return (
+      <Sheet visible={false} onClose={onClose}>
+        {null}
+      </Sheet>
+    );
 
   const author = member(tx.by);
   const isDeposit = tx.type === 'deposit';
@@ -44,7 +49,13 @@ export function TransactionSheet({ txId, onClose }: { txId: string | null; onClo
         <Avatar user={author} color={memberColor(tx.by)} size={48} />
         <View style={{ flex: 1 }}>
           <Text style={s.title}>
-            {tx.by === me.id ? t(isDeposit ? 'tx.youDeposited' : 'tx.youWithdrew') : t(isDeposit ? 'tx.deposited' : 'tx.withdrew', { name: author.name })}
+            {tx.refund
+              ? tx.by === me.id
+                ? t('tx.youRefunded')
+                : t('tx.refunded', { name: author.name })
+              : tx.by === me.id
+                ? t(isDeposit ? 'tx.youDeposited' : 'tx.youWithdrew')
+                : t(isDeposit ? 'tx.deposited' : 'tx.withdrew', { name: author.name })}
           </Text>
           <Text style={s.meta}>
             {goal?.name ?? t('common.commonFund')} · {formatShortDate(tx.date, locale)} {formatTime(tx.date, locale)}
@@ -160,7 +171,14 @@ const useStyles = makeStyles(({ colors }) => ({
   empty: { ...type.small, color: colors.textSubtle },
   comment: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm },
   commentOwn: { justifyContent: 'flex-end' },
-  bubble: { maxWidth: '78%', backgroundColor: colors.surfaceAlt, borderRadius: 18, borderBottomLeftRadius: 6, paddingHorizontal: 12, paddingVertical: 8 },
+  bubble: {
+    maxWidth: '78%',
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 18,
+    borderBottomLeftRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
   bubbleOwn: { backgroundColor: colors.primary, borderBottomLeftRadius: 18, borderBottomRightRadius: 6 },
   bubbleText: { ...type.body, fontSize: 14, color: colors.text },
   bubbleTime: { ...type.small, fontSize: 10, color: colors.textSubtle, marginTop: 2, alignSelf: 'flex-end' },

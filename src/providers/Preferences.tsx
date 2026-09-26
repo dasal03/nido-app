@@ -18,13 +18,11 @@ export interface Prefs {
   reminders: boolean;
   /** Monthly recap notification. */
   monthlyRecap: boolean;
-  /** Require device authentication (Face ID / fingerprint / passcode) to open the app. */
-  lock: boolean;
   /** Start with balances masked. */
   hideBalances: boolean;
 }
 
-const DEFAULT_PREFS: Prefs = { language: 'system', theme: 'system', reminders: true, monthlyRecap: true, lock: false, hideBalances: false };
+const DEFAULT_PREFS: Prefs = { language: 'system', theme: 'system', reminders: true, monthlyRecap: true, hideBalances: false };
 
 const STORAGE_KEY = 'nido/prefs/v1';
 const DICTIONARIES: Record<Language, Record<TranslationKey, string>> = { es, en };
