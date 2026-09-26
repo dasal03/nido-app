@@ -46,7 +46,7 @@ src/
 
 ## Supabase
 
-1. Ejecuta en orden en el SQL Editor de Supabase: `supabase/schema.sql`, `supabase/migrations/002_identity.sql` y `supabase/migrations/003_groups_approvals.sql`.
+1. Ejecuta en orden en el SQL Editor de Supabase: `supabase/schema.sql` y las migraciones `supabase/migrations/002_identity.sql`, `003_groups_approvals.sql` y `004_delete_account.sql`.
 2. Copia `.env.example` a `.env.local` con la URL y la anon key del proyecto.
 3. En Authentication → URL Configuration agrega `nido://**` a las Redirect URLs.
 4. En Authentication → Email Templates → **Reset Password**, incluye el código `{{ .Token }}` en el correo (la app pide ese código de 6 dígitos para cambiar la contraseña).
@@ -59,6 +59,16 @@ Sin `.env.local` la app usa el backend local (datos solo en el dispositivo; el c
 - Los retiros, disolver el nido y salir de una familia son **solicitudes**: se ejecutan cuando todos los demás integrantes aprueban. Cualquiera puede rechazar y quien la creó puede cancelarla.
 - Al disolver (o salir), el saldo se reintegra a cada persona en proporción a lo que aportó, como movimientos de "reintegro".
 - En Supabase estas reglas se cumplen en la base de datos (funciones `create_request`, `approve_request`…); la app no puede insertar retiros directamente.
+
+## Actualizaciones OTA (EAS Update)
+
+Los builds `preview` y `production` escuchan los canales del mismo nombre. Para enviar cambios de JavaScript sin publicar un build nuevo:
+
+```bash
+npx eas-cli@latest update --channel production --message "Descripción del cambio" --environment production
+```
+
+Si cambias librerías nativas o `app.json`, sube la `version` y haz un build nuevo (el `runtimeVersion` sigue la versión de la app).
 
 ## Idiomas y temas
 

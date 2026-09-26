@@ -20,9 +20,18 @@ export interface Prefs {
   monthlyRecap: boolean;
   /** Start with balances masked. */
   hideBalances: boolean;
+  /** The welcome slides were seen (or the user has signed in on this device). */
+  onboarded: boolean;
 }
 
-const DEFAULT_PREFS: Prefs = { language: 'system', theme: 'system', reminders: true, monthlyRecap: true, hideBalances: false };
+const DEFAULT_PREFS: Prefs = {
+  language: 'system',
+  theme: 'system',
+  reminders: true,
+  monthlyRecap: true,
+  hideBalances: false,
+  onboarded: false,
+};
 
 const STORAGE_KEY = 'nido/prefs/v1';
 const DICTIONARIES: Record<Language, Record<TranslationKey, string>> = { es, en };

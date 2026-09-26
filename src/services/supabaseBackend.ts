@@ -60,6 +60,7 @@ const RPC_ERRORS: Record<string, ErrorKey> = {
   amount_positive: 'errors.amountPositive',
   insufficient_funds: 'errors.insufficientFunds',
   request_pending: 'errors.requestPending',
+  active_nests: 'errors.activeNests',
 };
 
 /** Translates Supabase/Postgres errors into the app's translated error keys. */
@@ -441,6 +442,17 @@ export const supabaseBackend: Backend = {
 
   async cancelRequest(id) {
     await write(client().rpc('cancel_request', { p_request: id }));
+  },
+
+  async deleteAccount(password) {
+    const sb = client();
+    const me = requireUser();
+    // Re-check the password before such a destructive action.
+    const { error } = await sb.auth.signInWithPassword({ email: me.email, password });
+    if (error) throw new BackendError('errors.badPassword');
+    check(await sb.rpc('delete_account'));
+    await sb.auth.signOut({ scope: 'local' }).catch(() => {});
+    publish(EMPTY);
   },
 
   async requestPasswordReset(email) {

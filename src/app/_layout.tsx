@@ -17,7 +17,8 @@ import { BiometricOffer } from '@/components/BiometricOffer';
 import { ConfirmProvider } from '@/components/ConfirmDialog';
 import { CelebrationWatcher } from '@/game/Celebrations';
 import { NotificationSync } from '@/game/NotificationSync';
-import { PreferencesProvider, useTheme } from '@/providers/Preferences';
+import { RequestNotifier } from '@/game/RequestNotifier';
+import { PreferencesProvider, usePreferences, useTheme } from '@/providers/Preferences';
 import { AppProvider, useSession } from '@/store/SavingsContext';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -25,7 +26,12 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 function RootStack() {
   const { user, couple } = useSession();
   const { colors, dark } = useTheme();
+  const { prefs, setPref } = usePreferences();
   const linked = !!user && !!couple;
+  // Anyone who has signed in on this device doesn't need the welcome slides again.
+  useEffect(() => {
+    if (user && !prefs.onboarded) setPref('onboarded', true);
+  }, [user, prefs.onboarded, setPref]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -47,14 +53,19 @@ function RootStack() {
         <Stack.Protected guard={!!user && !couple}>
           <Stack.Screen name="link" options={{ animation: 'fade' }} />
         </Stack.Protected>
-        <Stack.Protected guard={!user}>
+        <Stack.Protected guard={!user && !prefs.onboarded}>
+          <Stack.Screen name="welcome" options={{ animation: 'fade' }} />
+        </Stack.Protected>
+        <Stack.Protected guard={!user && prefs.onboarded}>
           <Stack.Screen name="login" options={{ animation: 'fade' }} />
         </Stack.Protected>
+        <Stack.Screen name="legal" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         {/* Deep link target (nido://invite?code=…); redirects according to the session state. */}
         <Stack.Screen name="invite" options={{ animation: 'none' }} />
       </Stack>
       {linked && <CelebrationWatcher />}
       {linked && <NotificationSync />}
+      {linked && <RequestNotifier />}
       {user && <BiometricOffer />}
     </View>
   );

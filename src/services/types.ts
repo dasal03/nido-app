@@ -71,6 +71,11 @@ export interface Backend {
   requestPasswordReset(email: string): Promise<{ devCode?: string }>;
   /** Verifies the code, sets the new password and signs the user in. */
   resetPassword(input: { email: string; code: string; password: string }): Promise<void>;
+  /**
+   * Permanently deletes the signed-in account after checking the password. Fails with
+   * `errors.activeNests` while the user still shares an active nest with real people.
+   */
+  deleteAccount(password: string): Promise<void>;
   setCurrency(currency: string): Promise<void>;
   setSplit(split: Record<string, number> | null): Promise<void>;
   renamePet(name: string): Promise<void>;

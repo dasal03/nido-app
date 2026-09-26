@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Animated, Platform, Pressable, Text, View, type LayoutChangeEvent } from 'react-native';
 
@@ -546,7 +547,17 @@ function RegisterWizard({ onCreated }: { onCreated: (email: string) => void }) {
               size={22}
               color={values.terms ? colors.accent : err('terms') ? colors.danger : colors.textSubtle}
             />
-            <Text style={s.termsText}>{t('auth.terms')}</Text>
+            <Text style={s.termsText}>
+              {t('auth.termsPrefix')}
+              <Text style={s.termsLink} onPress={() => router.push({ pathname: '/legal', params: { doc: 'terms' } })}>
+                {t('auth.termsLink')}
+              </Text>
+              {t('auth.termsAnd')}
+              <Text style={s.termsLink} onPress={() => router.push({ pathname: '/legal', params: { doc: 'privacy' } })}>
+                {t('auth.privacyLink')}
+              </Text>
+              {t('auth.termsSuffix')}
+            </Text>
           </Pressable>
           {err('terms') && <Text style={s.termsError}>{err('terms')}</Text>}
         </>
@@ -657,6 +668,7 @@ const useStyles = makeStyles(({ colors, elevation }) => ({
   forgotText: { ...type.smallStrong, color: colors.accent },
   terms: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2, paddingVertical: 4 },
   termsText: { ...type.small, color: colors.text, flex: 1, lineHeight: 19 },
+  termsLink: { fontFamily: type.bodyStrong.fontFamily, color: colors.accent },
   termsError: { ...type.small, fontSize: 12, color: colors.danger, marginTop: -8 },
   nav: { flexDirection: 'row', gap: spacing.sm + 2, marginTop: 4 },
 }));

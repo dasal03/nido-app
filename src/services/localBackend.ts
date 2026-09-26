@@ -327,6 +327,35 @@ export const localBackend: Backend = {
     commit({ ...db, sessionUserId: null });
   },
 
+  async deleteAccount(password) {
+    const me = requireUser() as UserRecord;
+    if ((await hash(password, me.salt)) !== me.passwordHash) throw new BackendError('errors.badPassword');
+    const active = me.coupleIds.map((id) => db.couples[id]).filter((c): c is Couple => !!c && !c.archivedAt);
+    const sharesWithPeople = active.some((c) =>
+      c.memberIds.some((id) => id !== me.id && !(db.users[id] as UserRecord | undefined)?.isDemo),
+    );
+    if (sharesWithPeople) throw new BackendError('errors.activeNests');
+    const now = new Date().toISOString();
+    const couples = { ...db.couples };
+    for (const c of active) couples[c.id] = { ...c, archivedAt: now, recurring: c.recurring.map((r) => ({ ...r, active: false })) };
+    // Keep an anonymous record so other members' history still has a name; drop everything personal.
+    const anonymous: UserRecord = {
+      ...me,
+      name: 'Cuenta eliminada',
+      username: `deleted_${me.id.replace(/-/g, '').slice(0, 12)}`,
+      email: '',
+      phone: '',
+      photo: null,
+      birthday: '',
+      gender: '',
+      documentType: '',
+      documentNumber: '',
+      passwordHash: '',
+      activeCoupleId: null,
+    };
+    commit({ ...db, couples, users: { ...db.users, [me.id]: anonymous }, sessionUserId: null });
+  },
+
   async updateProfile(patch) {
     const user = requireUser();
     const next = { ...patch };

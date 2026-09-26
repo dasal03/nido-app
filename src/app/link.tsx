@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Pressable, Text } from 'react-native';
 
 import { AuthShell } from '@/components/AuthShell';
+import { DeleteAccountSheet } from '@/components/DeleteAccountSheet';
 import { Icon } from '@/components/Icon';
 import { LinkForm } from '@/components/LinkForm';
 import { makeStyles, useT, useTheme } from '@/providers/Preferences';
@@ -14,6 +16,7 @@ export default function LinkScreen() {
   const { colors } = useTheme();
   const { t } = useT();
   const { user } = useSession();
+  const [deleting, setDeleting] = useState(false);
   if (!user) return null;
 
   return (
@@ -23,6 +26,10 @@ export default function LinkScreen() {
         <Icon name="logout" size={16} color={colors.textMuted} />
         <Text style={s.logoutText}>{t('settings.logout')}</Text>
       </Pressable>
+      <Pressable onPress={() => setDeleting(true)} style={s.logout} accessibilityRole="button">
+        <Text style={[s.logoutText, { color: colors.danger, fontSize: 13 }]}>{t('deleteAccount.title')}</Text>
+      </Pressable>
+      <DeleteAccountSheet visible={deleting} onClose={() => setDeleting(false)} />
     </AuthShell>
   );
 }

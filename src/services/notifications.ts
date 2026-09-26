@@ -63,3 +63,11 @@ export async function syncNotifications({ reminders, monthly }: ScheduleInput) {
     });
   }
 }
+
+/** Shows a notification right away (e.g. a new request that needs the user's approval). */
+export async function notifyNow(title: string, body: string) {
+  if (!SUPPORTED) return;
+  const { granted } = await Notifications.getPermissionsAsync();
+  if (!granted) return;
+  await Notifications.scheduleNotificationAsync({ content: { title, body }, trigger: null });
+}

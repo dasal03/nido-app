@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/Avatar';
 import { AvatarCropper } from '@/components/AvatarCropper';
+import { DeleteAccountSheet } from '@/components/DeleteAccountSheet';
 import { ExportSheet } from '@/components/ExportSheet';
 import { biometryLabelKey } from '@/components/BiometricOffer';
 import {
@@ -48,6 +49,7 @@ export default function SettingsScreen() {
   const [cropping, setCropping] = useState<PickedImage | null>(null);
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [notifGranted, setNotifGranted] = useState(false);
   useEffect(() => {
@@ -186,6 +188,14 @@ export default function SettingsScreen() {
             divider
             trailing={<Icon name={copied ? 'check-circle' : 'copy'} size={18} color={copied ? colors.success : colors.textSubtle} />}
           />
+          <SettingsRow
+            icon="trash"
+            label={t('deleteAccount.title')}
+            hint={t('deleteAccount.hint')}
+            danger
+            divider
+            onPress={() => setDeleting(true)}
+          />
         </Card>
 
         <Text style={s.section}>{t('nests.title')}</Text>
@@ -298,12 +308,28 @@ export default function SettingsScreen() {
           />
         </Card>
 
+        <Text style={s.section}>{t('legal.section')}</Text>
+        <Card style={s.group}>
+          <SettingsRow
+            icon="shield"
+            label={t('legal.privacy')}
+            onPress={() => router.push({ pathname: '/legal', params: { doc: 'privacy' } })}
+          />
+          <SettingsRow
+            icon="receipt"
+            label={t('legal.terms')}
+            onPress={() => router.push({ pathname: '/legal', params: { doc: 'terms' } })}
+            divider
+          />
+        </Card>
+
         <Text style={s.version}>{t('settings.version', { version: Constants.expoConfig?.version ?? '1.0.0' })}</Text>
       </ScrollView>
 
       <PhotoSheet visible={photoSheet} user={me} onClose={() => setPhotoSheet(false)} onSelect={onPhotoAction} />
       <NestActionsSheet nest={nestSheet} onClose={() => setNestSheet(null)} />
       <ExportSheet visible={exporting} onClose={() => setExporting(false)} />
+      <DeleteAccountSheet visible={deleting} onClose={() => setDeleting(false)} />
       <Sheet visible={bioSheet} onClose={() => setBioSheet(false)}>
         <View style={{ gap: spacing.md }}>
           <Text style={s.sheetTitle}>{t('bio.confirmTitle')}</Text>
