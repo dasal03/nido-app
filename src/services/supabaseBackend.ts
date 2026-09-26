@@ -4,6 +4,7 @@
  * the local backend; the UI reads a normalized snapshot rebuilt after every change.
  */
 import * as Crypto from 'expo-crypto';
+import * as Linking from 'expo-linking';
 import type { PostgrestError, RealtimeChannel } from '@supabase/supabase-js';
 
 import { buildDemoData } from '@/store/seed';
@@ -237,7 +238,9 @@ export const supabaseBackend: Backend = {
     const { name, username, email, phone, password } = checkRegistration(input);
     const available = check(await sb.rpc('username_available', { p_username: username }));
     if (!available) throw new BackendError('errors.usernameTaken');
-    const { data, error } = await sb.auth.signUp({ email, password, options: { data: { name, username, phone } } });
+    // The confirmation email links back into the app (add `nido://**` to Supabase's Redirect URLs).
+    const emailRedirectTo = Linking.createURL('login');
+    const { data, error } = await sb.auth.signUp({ email, password, options: { data: { name, username, phone }, emailRedirectTo } });
     if (error) fail(error);
     // With "Confirm email" enabled there's no session until the user clicks the link.
     if (!data.session) throw new BackendError('errors.confirmEmail');

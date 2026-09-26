@@ -7,8 +7,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.nido.app"
+      "supportsTablet": false,
+      "bundleIdentifier": "com.diegoasp.nido",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +21,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.nido.app"
+      "package": "com.diegoasp.nido"
     },
     "web": {
       "favicon": "./assets/favicon.png",
