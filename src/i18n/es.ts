@@ -13,6 +13,7 @@ export const es = {
   'common.commonFund': 'Fondo común',
   'common.tagline': 'Ahorren juntos, logren más.',
 
+  'errors.loadFailed': 'Tu contraseña es correcta, pero no pudimos cargar tus datos. Revisa tu conexión e intenta de nuevo; si sigue pasando, avísanos.',
   'errors.generic': 'Algo salió mal. Intenta de nuevo.',
   'errors.sessionExpired': 'Tu sesión expiró. Inicia sesión de nuevo.',
   'errors.notLinked': 'Aún no estás vinculado con tu pareja.',

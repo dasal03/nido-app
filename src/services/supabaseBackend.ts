@@ -157,8 +157,12 @@ const toTransaction = (t: any): Transaction => ({
     .sort((a: { date: string }, b: { date: string }) => a.date.localeCompare(b.date)),
 });
 
-/** Reloads everything the signed-in user can see and publishes a fresh snapshot. */
-async function refresh() {
+/**
+ * Reloads everything the signed-in user can see and publishes a fresh snapshot. On errors it keeps
+ * the last good snapshot, unless `strict` (right after signing in): then it signs out locally and
+ * throws, so the sign-in screen shows an error instead of silently staying put.
+ */
+async function refresh(strict = false) {
   const sb = client();
   const { data: auth } = await sb.auth.getSession();
   const uid = auth.session?.user.id;
@@ -174,7 +178,12 @@ async function refresh() {
       )
       .order('date', { referencedTable: 'transactions', ascending: false }),
   ]);
-  if (meError || couplesError) return; // keep the last good snapshot on transient errors
+  if (meError || couplesError) {
+    if (__DEV__) console.warn('Nido: could not load data', meError ?? couplesError);
+    if (!strict) return; // keep the last good snapshot on transient errors
+    await sb.auth.signOut({ scope: 'local' }).catch(() => {});
+    throw new BackendError('errors.loadFailed');
+  }
   if (!me) return publish({ ...EMPTY, sessionUserId: null });
 
   const users: Record<string, User> = {};
@@ -317,7 +326,7 @@ export const supabaseBackend: Backend = {
     if (error) fail(error);
     // With "Confirm email" enabled there's no session until the user clicks the link.
     if (!data.session) return { needsConfirmation: true };
-    await refresh();
+    await refresh(true);
     return { needsConfirmation: false };
   },
 
@@ -340,7 +349,7 @@ export const supabaseBackend: Backend = {
     }
     const { error } = await sb.auth.signInWithPassword({ email, password });
     if (error) fail(error);
-    await refresh();
+    await refresh(true);
   },
 
   async logout() {
@@ -470,7 +479,7 @@ export const supabaseBackend: Backend = {
     if (error) throw new BackendError('errors.resetCode');
     const { error: updateError } = await sb.auth.updateUser({ password });
     if (updateError) fail(updateError);
-    await refresh();
+    await refresh(true);
   },
 
   async setCurrency(currency) {

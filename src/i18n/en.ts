@@ -15,6 +15,7 @@ export const en: Record<TranslationKey, string> = {
   'common.commonFund': 'Shared fund',
   'common.tagline': 'Save together, achieve more.',
 
+  'errors.loadFailed': "Your password is correct, but we couldn't load your data. Check your connection and try again; if it keeps happening, let us know.",
   'errors.generic': 'Something went wrong. Please try again.',
   'errors.sessionExpired': 'Your session expired. Please sign in again.',
   'errors.notLinked': "You're not linked with your partner yet.",
