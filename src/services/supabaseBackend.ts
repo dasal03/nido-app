@@ -20,6 +20,7 @@ import {
   checkUsername,
   normalizeCode,
   normalizeEmail,
+  normalizeFamilyCode,
   normalizeUsername,
   type Backend,
   type Db,
@@ -207,6 +208,7 @@ async function refresh(strict = false) {
       recurring: c.recurring_rules.map(toRule),
       split: c.split,
       petName: c.pet_name,
+      inviteCode: c.invite_code ?? null,
       requests: (c.approval_requests ?? [])
         .map(toRequest)
         .sort((a: ApprovalRequest, b: ApprovalRequest) => b.createdAt.localeCompare(a.createdAt)),
@@ -423,6 +425,11 @@ export const supabaseBackend: Backend = {
     await write(client().rpc('add_member_by_code', { p_couple: couple.id, p_code: normalizeCode(code) }));
   },
 
+  async joinFamily(code) {
+    requireUser();
+    await write(client().rpc('join_family', { p_code: normalizeFamilyCode(code) }));
+  },
+
   async requestWithdraw({ amount, goalId, note }) {
     const { couple } = requireCouple();
     if (!(amount > 0)) throw new BackendError('errors.amountPositive');
@@ -482,9 +489,9 @@ export const supabaseBackend: Backend = {
     await refresh(true);
   },
 
-  async setCurrency(currency) {
+  async setCurrency(currency, rate) {
     const { couple } = requireCouple();
-    await write(client().from('couples').update({ currency }).eq('id', couple.id));
+    await write(client().rpc('change_currency', { p_couple: couple.id, p_currency: currency, p_rate: rate }));
   },
 
   async setSplit(split) {

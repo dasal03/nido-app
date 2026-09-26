@@ -123,4 +123,6 @@ export interface Couple {
   /** Name of the couple's pet; null uses the default. */
   petName: string | null;
   requests: ApprovalRequest[];
+  /** Family groups only: code others use to join (FAM-XXXXX). */
+  inviteCode: string | null;
 }

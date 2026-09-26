@@ -27,6 +27,9 @@ export async function getBiometry(): Promise<BiometryKind | null> {
   if (!biometricsSupported) return null;
   const [hardware, enrolled] = await Promise.all([LocalAuthentication.hasHardwareAsync(), LocalAuthentication.isEnrolledAsync()]);
   if (!hardware || !enrolled) return null;
+  // Android reports several methods (fingerprint, face unlock, iris) behind one system prompt, so
+  // it's always called "biometrics" there. Only an iPhone with Face ID is named Face ID.
+  if (Platform.OS !== 'ios') return 'generic';
   const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
   if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) return 'face';
   if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) return 'fingerprint';
@@ -38,6 +41,12 @@ const secureOptions = (prompt: string): SecureStore.SecureStoreOptions => ({
   requireAuthentication: !inExpoGo,
   authenticationPrompt: prompt,
 });
+
+/** Whether the enrolled identifier (email or username, as typed at sign-in) belongs to this user. */
+export function isEnrolledFor(enrolled: string | null, user: { email: string; username: string }) {
+  const id = enrolled?.trim().toLowerCase().replace(/^@/, '');
+  return !!id && (id === user.email.toLowerCase() || id === user.username.toLowerCase());
+}
 
 /** The account enrolled for biometric sign-in on this device, if any. */
 export async function getEnrolledIdentifier(): Promise<string | null> {

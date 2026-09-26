@@ -1,14 +1,14 @@
-import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, Switch, Text, View } from 'react-native';
+import { AppState, Linking, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/Avatar';
 import { AvatarCropper } from '@/components/AvatarCropper';
 import { DeleteAccountSheet } from '@/components/DeleteAccountSheet';
 import { ExportSheet } from '@/components/ExportSheet';
+import { InviteSheet } from '@/components/InviteSheet';
 import { biometryLabelKey } from '@/components/BiometricOffer';
 import {
   biometricsSupported,
@@ -16,6 +16,7 @@ import {
   enableBiometricLogin,
   getBiometry,
   getEnrolledIdentifier,
+  isEnrolledFor,
   type BiometryKind,
 } from '@/services/biometrics';
 import { Icon, type IconName } from '@/components/Icon';
@@ -28,7 +29,12 @@ import { useTabBarSpace } from '@/components/TabBar';
 import { Button, Card, ErrorBanner, PressableScale, TabHeader, TextField, tap } from '@/components/ui';
 import { makeStyles, usePreferences, type LanguagePref, type ThemePref } from '@/providers/Preferences';
 import { backend } from '@/services/backend';
-import { ensureNotificationPermission, hasNotificationPermission, notificationsSupported } from '@/services/notifications';
+import {
+  ensureNotificationPermission,
+  getNotificationPermission,
+  hasNotificationPermission,
+  notificationsSupported,
+} from '@/services/notifications';
 import { useSavings, useSession, type Nest } from '@/store/SavingsContext';
 import { darkTheme, lightTheme, radius, spacing, type, type Theme } from '@/theme';
 import { goBackToHome } from '@/utils/navigation';
@@ -47,22 +53,31 @@ export default function SettingsScreen() {
   const [languageSheet, setLanguageSheet] = useState(false);
   const [nestSheet, setNestSheet] = useState<Nest | null>(null);
   const [cropping, setCropping] = useState<PickedImage | null>(null);
-  const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [inviting, setInviting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [notifGranted, setNotifGranted] = useState(false);
+  // Re-check when coming back from the phone's settings.
   useEffect(() => {
-    hasNotificationPermission()
-      .then(setNotifGranted)
-      .catch(() => {});
+    const check = () =>
+      hasNotificationPermission()
+        .then(setNotifGranted)
+        .catch(() => {});
+    check();
+    const sub = AppState.addEventListener('change', (state) => state === 'active' && check());
+    return () => sub.remove();
   }, []);
 
   /** Turns a notification preference on (asking for permission first) or off. */
   const toggleNotifications = async (key: 'reminders' | 'monthlyRecap', value: boolean) => {
     setNotice(null);
     if (value && !notificationsSupported) return setNotice(t('settings.webUnavailable'));
-    if (value && !(await ensureNotificationPermission())) return setNotice(t('settings.notificationsDenied'));
+    if (value && !(await ensureNotificationPermission())) {
+      // Blocked: only the system settings can turn them back on.
+      if ((await getNotificationPermission()) === 'blocked') Linking.openSettings().catch(() => {});
+      return setNotice(t('settings.notificationsDenied'));
+    }
     if (value) setNotifGranted(true);
     setPref(key, value);
   };
@@ -86,9 +101,9 @@ export default function SettingsScreen() {
       .then(setBioKind)
       .catch(() => {});
     getEnrolledIdentifier()
-      .then((id) => setBioEnabled(id?.toLowerCase() === me.email.toLowerCase()))
+      .then((id) => setBioEnabled(isEnrolledFor(id, me)))
       .catch(() => {});
-  }, [me.email]);
+  }, [me]);
   const bioMethod = t(biometryLabelKey(bioKind ?? 'generic'));
 
   const toggleBiometrics = async (value: boolean) => {
@@ -123,13 +138,6 @@ export default function SettingsScreen() {
     if (!cropping) return;
     await backend.updateProfile({ photo: await cropToAvatar(cropping, rect) });
     setCropping(null);
-  };
-
-  const copyCode = async () => {
-    await Clipboard.setStringAsync(me.code);
-    tap('success');
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   const languages: { value: LanguagePref; label: string }[] = [
@@ -183,10 +191,9 @@ export default function SettingsScreen() {
           <SettingsRow
             icon="qr"
             label={t('profile.yourCode')}
-            hint={copied ? t('common.copied') : `${me.code} · ${t('settings.tapToCopy')}`}
-            onPress={copyCode}
+            hint={`${me.code} · ${t('settings.codeHint')}`}
+            onPress={() => setInviting(true)}
             divider
-            trailing={<Icon name={copied ? 'check-circle' : 'copy'} size={18} color={copied ? colors.success : colors.textSubtle} />}
           />
           <SettingsRow
             icon="trash"
@@ -330,6 +337,13 @@ export default function SettingsScreen() {
       <NestActionsSheet nest={nestSheet} onClose={() => setNestSheet(null)} />
       <ExportSheet visible={exporting} onClose={() => setExporting(false)} />
       <DeleteAccountSheet visible={deleting} onClose={() => setDeleting(false)} />
+      <InviteSheet
+        visible={inviting}
+        onClose={() => setInviting(false)}
+        code={me.code}
+        title={t('invite.qrTitle')}
+        body={t('invite.qrBody')}
+      />
       <Sheet visible={bioSheet} onClose={() => setBioSheet(false)}>
         <View style={{ gap: spacing.md }}>
           <Text style={s.sheetTitle}>{t('bio.confirmTitle')}</Text>

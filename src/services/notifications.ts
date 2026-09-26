@@ -22,9 +22,29 @@ export async function hasNotificationPermission() {
   return (await Notifications.getPermissionsAsync()).granted;
 }
 
+/** Android 13+ only shows the permission prompt once the app has a notification channel. */
+async function ensureChannel() {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync('default', {
+    name: 'Nido',
+    importance: Notifications.AndroidImportance.DEFAULT,
+  });
+}
+
+export type NotificationPermission = 'granted' | 'ask' | 'blocked' | 'unsupported';
+
+/** 'ask': the app can show the system prompt; 'blocked': only the phone's settings can enable it. */
+export async function getNotificationPermission(): Promise<NotificationPermission> {
+  if (!SUPPORTED) return 'unsupported';
+  const current = await Notifications.getPermissionsAsync();
+  if (current.granted) return 'granted';
+  return current.canAskAgain ? 'ask' : 'blocked';
+}
+
 /** Asks for permission if needed; resolves to whether notifications can be shown. */
 export async function ensureNotificationPermission() {
   if (!SUPPORTED) return false;
+  await ensureChannel();
   const current = await Notifications.getPermissionsAsync();
   if (current.granted) return true;
   if (!current.canAskAgain) return false;

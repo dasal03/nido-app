@@ -1,12 +1,13 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Share, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar, NestAvatars } from '@/components/Avatar';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { Icon } from '@/components/Icon';
+import { InviteSheet } from '@/components/InviteSheet';
 import { LinkForm } from '@/components/LinkForm';
 import { PetCard } from '@/components/PetCard';
 import { PendingRequests, RefundBreakdown } from '@/components/Requests';
@@ -33,6 +34,9 @@ export default function NestScreen() {
   const money = useMoney();
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  // Families share their own code (anyone with it joins); in a couple you share your personal code.
+  const inviteCode = isFamily && couple.inviteCode ? couple.inviteCode : me.code;
   const total = members.reduce((sum, m) => sum + (byMember[m.id] ?? 0), 0);
   const completed = goals.filter((g) => savedFor(g.id) >= g.target).length;
   const count = (id: string) => transactions.filter((tx) => tx.by === id && tx.type === 'deposit').length;
@@ -99,15 +103,7 @@ export default function NestScreen() {
 
         <View style={s.quickRow}>
           <QuickButton icon="edit" label={t('nest.editName')} onPress={() => setEditing(true)} />
-          {isFamily ? (
-            <QuickButton icon="user-plus" label={t('family.addMember')} onPress={() => setAdding(true)} />
-          ) : (
-            <QuickButton
-              icon="share"
-              label={t('couple.shareCode')}
-              onPress={() => Share.share({ message: t('couple.shareCodeMessage', { code: me.code }) }).catch(() => {})}
-            />
-          )}
+          <QuickButton icon="qr" label={t('couple.shareCode')} onPress={() => setInviting(true)} />
           {isFamily && !soleMember ? (
             <QuickButton icon="door" label={t('nest.leave')} danger onPress={leave} disabled={leavePending} />
           ) : (
@@ -169,13 +165,17 @@ export default function NestScreen() {
         <Text style={s.section}>{t('nest.manage')}</Text>
         <Card style={{ paddingVertical: spacing.xs }}>
           <SettingsRow icon="edit" label={t('nest.editName')} hint={nestName} onPress={() => setEditing(true)} />
-          <SettingsRow
-            icon="qr"
-            label={t('couple.shareCode')}
-            hint={me.code}
-            onPress={() => Share.share({ message: t('couple.shareCodeMessage', { code: me.code }) }).catch(() => {})}
-            divider
-          />
+          <SettingsRow icon="qr" label={t('couple.shareCode')} hint={inviteCode} onPress={() => setInviting(true)} divider />
+          {isFamily && (
+            <SettingsRow
+              icon="user-plus"
+              label={t('family.addMember')}
+              hint={t('family.addByCodeHint')}
+              onPress={() => setAdding(true)}
+              divider
+            />
+          )}
+          <SettingsRow icon="add" label={t('nests.add')} hint={t('nests.addHint')} onPress={() => router.push('/add-partner')} divider />
           <SettingsRow
             icon="settings"
             label={t('settings.title')}
@@ -205,6 +205,13 @@ export default function NestScreen() {
       </ScrollView>
 
       <RenameSheet visible={editing} onClose={() => setEditing(false)} />
+      <InviteSheet
+        visible={inviting}
+        onClose={() => setInviting(false)}
+        code={inviteCode}
+        title={t(isFamily ? 'family.inviteTitle' : 'invite.qrTitle')}
+        body={isFamily ? t('family.inviteBody', { name: nestName }) : t('invite.qrBody')}
+      />
       <Sheet visible={adding} onClose={() => setAdding(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Text style={s.sheetTitle}>{t('family.addMember')}</Text>
@@ -274,7 +281,7 @@ function QuickButton({
   danger,
   disabled,
 }: {
-  icon: 'edit' | 'user-plus' | 'share' | 'door' | 'unlink';
+  icon: 'edit' | 'qr' | 'door' | 'unlink';
   label: string;
   onPress: () => void;
   danger?: boolean;
@@ -326,6 +333,7 @@ const useStyles = makeStyles(({ colors, dark, elevation }) => ({
   statLabel: { ...type.small, fontSize: 12, color: colors.textMuted, marginTop: 2 },
   quickRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
   quick: {
+    flex: 1,
     alignItems: 'center',
     gap: spacing.sm,
     backgroundColor: colors.surface,

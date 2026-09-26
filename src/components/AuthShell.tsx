@@ -1,6 +1,5 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { makeStyles, usePreferences, useTheme } from '@/providers/Preferences';
@@ -19,9 +18,7 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.topBar}>
         <View style={s.brand}>
-          <LinearGradient colors={colors.heroGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.logo}>
-            <Text style={{ fontSize: 18 }}>🪺</Text>
-          </LinearGradient>
+          <Image source={require('../../assets/logo.png')} style={s.logo} accessibilityIgnoresInvertColors />
           <Text style={s.wordmark}>Nido</Text>
         </View>
         <PressableScale
@@ -63,7 +60,7 @@ const useStyles = makeStyles(({ colors, elevation }) => ({
     paddingBottom: spacing.sm,
   },
   brand: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2 },
-  logo: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  logo: { width: 38, height: 38, borderRadius: 11 },
   wordmark: { fontFamily: fonts.extrabold, fontSize: 22, color: colors.text, letterSpacing: -0.6 },
   langPill: {
     flexDirection: 'row',

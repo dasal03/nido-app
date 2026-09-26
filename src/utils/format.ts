@@ -15,20 +15,27 @@ const ZERO_DECIMALS = new Set(['COP', 'CLP']);
 
 export const hasCents = (currency: string) => !ZERO_DECIMALS.has(currency);
 
+/**
+ * "$410.000 COP", "1.234,50 €". Currencies that share the "$" sign get their code appended so
+ * amounts are never ambiguous; `compact` drops cents and the code (tight spots like legends).
+ */
 export function formatMoney(amount: number, currency: string, opts: { compact?: boolean } = {}) {
+  const info = currencyInfo(currency);
   const decimals = ZERO_DECIMALS.has(currency) || opts.compact ? 0 : 2;
-  return new Intl.NumberFormat(currencyInfo(currency).locale, {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(amount);
+  const options = { style: 'currency', currency, minimumFractionDigits: decimals, maximumFractionDigits: decimals } as const;
+  let text: string;
+  try {
+    text = new Intl.NumberFormat(info.locale, { ...options, currencyDisplay: 'narrowSymbol' }).format(amount);
+  } catch {
+    // Older Intl implementations don't know narrowSymbol.
+    text = new Intl.NumberFormat(info.locale, options).format(amount);
+  }
+  return info.symbol === '$' && !opts.compact ? `${text} ${currency}` : text;
 }
 
 export function currencySymbol(currency: string) {
   return currencyInfo(currency).symbol;
 }
-
 
 /** Formats a raw keypad string ("12345.5") with the currency's separators, preserving a trailing dot. */
 export function formatAmountInput(value: string, currency: string) {
@@ -73,4 +80,3 @@ export function initials(name: string) {
     .map((w) => w[0]?.toUpperCase() ?? '')
     .join('');
 }
-

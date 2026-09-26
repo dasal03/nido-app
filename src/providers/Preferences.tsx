@@ -22,6 +22,8 @@ export interface Prefs {
   hideBalances: boolean;
   /** The welcome slides were seen (or the user has signed in on this device). */
   onboarded: boolean;
+  /** The "turn on notifications" suggestion on the home screen was dismissed. */
+  notifPromptDismissed: boolean;
 }
 
 const DEFAULT_PREFS: Prefs = {
@@ -31,6 +33,7 @@ const DEFAULT_PREFS: Prefs = {
   monthlyRecap: true,
   hideBalances: false,
   onboarded: false,
+  notifPromptDismissed: false,
 };
 
 const STORAGE_KEY = 'nido/prefs/v1';

@@ -16,6 +16,7 @@ import {
   XP_PER_DEPOSIT,
   XP_PER_GOAL,
   achievementDesc,
+  achievementParams,
   achievementTitle,
 } from '@/game/progress';
 import { useProgress } from '@/game/useProgress';
@@ -42,7 +43,11 @@ export default function PetScreen() {
     <SafeAreaView style={s.safe} edges={['top']}>
       <ScreenHeader title={t('pet.title')} onLeading={goBack} />
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-        <LinearGradient colors={dark ? ['#1B2140', '#101626'] : ['#FFF3CF', '#EAF2FF']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.stage}>
+        <LinearGradient
+          colors={dark ? ['#1B2140', '#101626'] : ['#FFF3CF', '#EAF2FF']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={s.stage}>
           <View style={s.stageTop}>
             <View style={s.levelPill}>
               <Text style={s.levelText}>{t('pet.level', { n: p.stage + 1 })}</Text>
@@ -131,7 +136,7 @@ export default function PetScreen() {
                   {t(achievementTitle(a.id))}
                 </Text>
                 <Text style={s.badgeDesc} numberOfLines={2}>
-                  {date ? formatShortDate(date, locale) : t(achievementDesc(a.id))}
+                  {date ? formatShortDate(date, locale) : t(achievementDesc(a.id), achievementParams(a.id, couple.currency))}
                 </Text>
                 <Text style={[s.badgeXp, !date && { color: colors.textSubtle }]}>+{a.xp} XP</Text>
               </View>
@@ -142,7 +147,15 @@ export default function PetScreen() {
 
       <Sheet visible={renaming} onClose={() => setRenaming(false)}>
         <View style={{ gap: spacing.md }}>
-          <TextField label={t('pet.rename')} icon="edit" value={draft} onChangeText={setDraft} placeholder={t('pet.defaultName')} maxLength={16} autoFocus />
+          <TextField
+            label={t('pet.rename')}
+            icon="edit"
+            value={draft}
+            onChangeText={setDraft}
+            placeholder={t('pet.defaultName')}
+            maxLength={16}
+            autoFocus
+          />
           <Button
             label={t('pet.save')}
             icon="check"

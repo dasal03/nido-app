@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
 
 import { makeStyles, useT, useTheme } from '@/providers/Preferences';
@@ -43,7 +43,9 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const openedAt = useRef(0);
   const confirm = useCallback<ConfirmFn>((title, message, confirmLabel, onConfirm, options) => {
+    openedAt.current = Date.now();
     setError(null);
     setPending({ title, message, confirmLabel, onConfirm, ...options });
   }, []);
@@ -53,7 +55,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   };
 
   const accept = async () => {
-    if (!pending) return;
+    // Ignore the tap that opened the dialog (a ghost click on web, or an accidental double tap).
+    if (!pending || Date.now() - openedAt.current < 450) return;
     setBusy(true);
     setError(null);
     try {

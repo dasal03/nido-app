@@ -10,7 +10,15 @@ import { Button, tap } from '@/components/ui';
 import { makeStyles, useT, useTheme } from '@/providers/Preferences';
 import { useSession } from '@/store/SavingsContext';
 import { fonts, radius, spacing, type } from '@/theme';
-import { ACHIEVEMENTS, STAGE_KEYS, achievementDesc, achievementTitle, computeProgress, type AchievementId } from './progress';
+import {
+  ACHIEVEMENTS,
+  STAGE_KEYS,
+  achievementDesc,
+  achievementParams,
+  achievementTitle,
+  computeProgress,
+  type AchievementId,
+} from './progress';
 
 const SEEN_KEY = 'nido/seen/v1';
 
@@ -54,10 +62,29 @@ export function CelebrationWatcher() {
 
   const current = queue[0];
   if (!current || !couple) return null;
-  return <CelebrationModal key={JSON.stringify(current)} item={current} petName={couple.petName} mood={progress?.mood ?? 'happy'} onClose={() => setQueue((q) => q.slice(1))} />;
+  return (
+    <CelebrationModal
+      key={JSON.stringify(current)}
+      item={current}
+      petName={couple.petName}
+      mood={progress?.mood ?? 'happy'}
+      onClose={() => setQueue((q) => q.slice(1))}
+    />
+  );
 }
 
-function CelebrationModal({ item, petName, mood, onClose }: { item: Celebration; petName: string | null; mood: 'happy' | 'calm' | 'sleepy' | 'sad'; onClose: () => void }) {
+function CelebrationModal({
+  item,
+  petName,
+  mood,
+  onClose,
+}: {
+  item: Celebration;
+  petName: string | null;
+  mood: 'happy' | 'calm' | 'sleepy' | 'sad';
+  onClose: () => void;
+}) {
+  const currency = useSession().couple?.currency ?? 'MXN';
   const s = useStyles();
   const { colors } = useTheme();
   const { t } = useT();
@@ -78,7 +105,7 @@ function CelebrationModal({ item, petName, mood, onClose }: { item: Celebration;
               </LinearGradient>
               <Text style={s.kicker}>{t('pet.achievementUnlocked')}</Text>
               <Text style={s.title}>{t(achievementTitle(achievement.id))}</Text>
-              <Text style={s.body}>{t(achievementDesc(achievement.id))}</Text>
+              <Text style={s.body}>{t(achievementDesc(achievement.id), achievementParams(achievement.id, currency))}</Text>
               <View style={s.xp}>
                 <Icon name="star" size={14} color={colors.accent} />
                 <Text style={s.xpText}>+{achievement.xp} XP</Text>
@@ -103,7 +130,14 @@ function CelebrationModal({ item, petName, mood, onClose }: { item: Celebration;
 
 const useStyles = makeStyles(({ colors }) => ({
   backdrop: { flex: 1, backgroundColor: 'rgba(5,8,15,0.6)', alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
-  card: { width: '100%', maxWidth: 360, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, alignItems: 'center' },
+  card: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    alignItems: 'center',
+  },
   badge: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
   kicker: { ...type.tiny, color: colors.accent, textTransform: 'uppercase', marginTop: spacing.sm },
   title: { fontFamily: fonts.extrabold, fontSize: 24, color: colors.text, textAlign: 'center', marginTop: 4 },

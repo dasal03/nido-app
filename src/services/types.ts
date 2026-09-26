@@ -54,6 +54,8 @@ export interface Backend {
   createFamily(name: string): Promise<void>;
   /** Adds the owner of `code` to the active family group. */
   addMemberByCode(code: string): Promise<void>;
+  /** Joins the family group whose code is `code` (FAM-XXXXX) and makes it the active nest. */
+  joinFamily(code: string): Promise<void>;
   setActiveCouple(coupleId: string): Promise<void>;
   renameCouple(coupleId: string, name: string): Promise<void>;
 
@@ -76,7 +78,8 @@ export interface Backend {
    * `errors.activeNests` while the user still shares an active nest with real people.
    */
   deleteAccount(password: string): Promise<void>;
-  setCurrency(currency: string): Promise<void>;
+  /** Changes the nest's currency, converting every amount: 1 unit of the old currency = `rate` of the new one. */
+  setCurrency(currency: string, rate: number): Promise<void>;
   setSplit(split: Record<string, number> | null): Promise<void>;
   renamePet(name: string): Promise<void>;
 
@@ -115,8 +118,21 @@ export const normalizeUsername = (username: string) => username.trim().toLowerCa
 /** Accepts "NIDO-XXXXX", "nido-xxxxx" or just "XXXXX". */
 export function normalizeCode(raw: string) {
   const code = raw.trim().toUpperCase().replace(/\s+/g, '');
+  if (isFamilyCode(code)) return code;
   return code && !code.startsWith('NIDO-') ? `NIDO-${code.replace(/^NIDO/, '')}` : code;
 }
+
+/** Family invite codes look like FAM-XXXXX; personal codes like NIDO-XXXXX. */
+export const isFamilyCode = (raw: string) => /^FAM-?[A-Z0-9]{5}$/.test(raw.trim().toUpperCase());
+
+export const normalizeFamilyCode = (raw: string) =>
+  raw
+    .trim()
+    .toUpperCase()
+    .replace(/^FAM-?/, 'FAM-');
+
+/** Converts an amount with an exchange rate, keeping cents and never reaching zero. */
+export const convertAmount = (amount: number, rate: number) => Math.max(Math.round(amount * rate * 100) / 100, 0.01);
 
 export function checkUsername(raw: string) {
   const username = normalizeUsername(raw);

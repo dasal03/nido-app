@@ -9,6 +9,8 @@ import { BalanceCard } from '@/components/BalanceCard';
 import { DueContributions } from '@/components/DueContributions';
 import { GoalTile } from '@/components/GoalCard';
 import { Icon, type IconName } from '@/components/Icon';
+import { InviteSheet } from '@/components/InviteSheet';
+import { NotificationPrompt } from '@/components/NotificationPrompt';
 import { useTabBarSpace } from '@/components/TabBar';
 import { TransactionRow } from '@/components/TransactionRow';
 import { NestSwitcherSheet } from '@/components/NestSheets';
@@ -31,7 +33,9 @@ export default function HomeScreen() {
   const { colors } = useTheme();
   const { t } = useT();
   const tabBarSpace = useTabBarSpace();
-  const { goals, transactions, commonFund, members, couple, nestName, needsMyApproval, pending } = useSavings();
+  const { goals, transactions, commonFund, members, couple, nestName, needsMyApproval, pending, isFamily } = useSavings();
+  const [inviting, setInviting] = useState(false);
+  const aloneInFamily = isFamily && members.length === 1 && !!couple.inviteCode;
   const [switcher, setSwitcher] = useState(false);
   const money = useMoney();
   const recent = transactions.slice(0, 4);
@@ -76,6 +80,19 @@ export default function HomeScreen() {
             <Icon name="chevron" size={18} color={colors.textSubtle} />
           </PressableScale>
         )}
+        {aloneInFamily && (
+          <PressableScale style={s.inviteCard} onPress={() => setInviting(true)} scaleTo={0.98}>
+            <View style={s.requestsIcon}>
+              <Icon name="user-plus" size={20} color={colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.requestsTitle}>{t('family.inviteCardTitle')}</Text>
+              <Text style={s.requestsBody}>{t('family.inviteCardBody', { code: couple.inviteCode ?? '' })}</Text>
+            </View>
+            <Icon name="qr" size={20} color={colors.accent} />
+          </PressableScale>
+        )}
+        <NotificationPrompt />
         <DueContributions />
 
         <View style={s.quickActions}>
@@ -144,6 +161,15 @@ export default function HomeScreen() {
           )}
         </Card>
       </ScrollView>
+      {couple.inviteCode && (
+        <InviteSheet
+          visible={inviting}
+          onClose={() => setInviting(false)}
+          code={couple.inviteCode}
+          title={t('family.inviteTitle')}
+          body={t('family.inviteBody', { name: nestName })}
+        />
+      )}
       <NestSwitcherSheet visible={switcher} onClose={() => setSwitcher(false)} />
     </SafeAreaView>
   );
@@ -238,6 +264,15 @@ const useStyles = makeStyles(({ colors, elevation }) => ({
     borderWidth: 1.5,
     borderColor: colors.accentSoft,
     ...elevation,
+  },
+  inviteCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md - 4,
+    marginTop: spacing.md,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.md,
+    padding: spacing.md - 2,
   },
   requestsIcon: {
     width: 42,

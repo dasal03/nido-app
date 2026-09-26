@@ -19,9 +19,11 @@ export function inviteUrl(code: string) {
   return Linking.createURL('invite', { queryParams: { code } });
 }
 
-/** Extracts a NIDO code from a scanned QR: either an invite URL or the bare code. */
+/** Extracts a code from a scanned QR (an invite URL or the bare code): a person's NIDO code or a family's FAM code. */
 export function parseInviteCode(data: string): string | null {
   const fromUrl = /[?&]code=([^&#]+)/i.exec(data)?.[1];
-  const candidate = decodeURIComponent(fromUrl ?? data).trim().toUpperCase();
-  return /^NIDO-[A-Z0-9]{5}$/.test(candidate) ? candidate : null;
+  const candidate = decodeURIComponent(fromUrl ?? data)
+    .trim()
+    .toUpperCase();
+  return /^(NIDO|FAM)-[A-Z0-9]{5}$/.test(candidate) ? candidate : null;
 }

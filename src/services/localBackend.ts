@@ -16,8 +16,10 @@ import {
   checkPhone,
   checkRegistration,
   checkUsername,
+  convertAmount,
   EMAIL_RE,
   normalizeCode,
+  normalizeFamilyCode,
   normalizeEmail,
   normalizeUsername,
   type Backend,
@@ -77,6 +79,15 @@ function updateCouple(couple: Couple, patch: Partial<Couple>) {
 
 const hash = (password: string, salt: string) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${salt}:${password}`);
 
+const randomChars = (n: number) => Array.from(Crypto.getRandomBytes(n), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+
+function generateFamilyCode() {
+  let code: string;
+  do code = `FAM-${randomChars(5)}`;
+  while (Object.values(db.couples).some((c) => c.inviteCode === code));
+  return code;
+}
+
 function generateCode() {
   const taken = new Set(Object.values(db.users).map((u) => u.code));
   let code: string;
@@ -127,6 +138,7 @@ function linkUsers(a: UserRecord, b: UserRecord, seed?: Pick<Couple, 'goals' | '
     split: null,
     petName: null,
     requests: [],
+    inviteCode: null,
   };
   commit({
     ...db,
@@ -275,6 +287,7 @@ export const localBackend: Backend = {
         c.petName ??= null;
         c.kind ??= 'couple';
         c.requests ??= [];
+        c.inviteCode ??= c.kind === 'family' ? generateFamilyCode() : null;
         for (const tx of c.transactions) {
           tx.reactions ??= {};
           tx.comments ??= [];
@@ -425,6 +438,7 @@ export const localBackend: Backend = {
       split: null,
       petName: null,
       requests: [],
+      inviteCode: generateFamilyCode(),
     };
     commit({
       ...db,
@@ -448,6 +462,19 @@ export const localBackend: Backend = {
         [member.id]: { ...member, coupleIds: [...member.coupleIds, couple.id], activeCoupleId: member.activeCoupleId ?? couple.id },
       },
       couples: { ...db.couples, [couple.id]: { ...couple, memberIds: [...couple.memberIds, member.id] } },
+    });
+  },
+
+  async joinFamily(rawCode) {
+    const me = requireUser();
+    const code = normalizeFamilyCode(rawCode);
+    const family = Object.values(db.couples).find((c) => c.inviteCode === code && c.kind === 'family' && !c.archivedAt);
+    if (!family) throw new BackendError('errors.codeNotFound');
+    if (family.memberIds.includes(me.id)) throw new BackendError('errors.alreadyMember');
+    commit({
+      ...db,
+      users: { ...db.users, [me.id]: { ...me, coupleIds: [...me.coupleIds, family.id], activeCoupleId: family.id } },
+      couples: { ...db.couples, [family.id]: { ...family, memberIds: [...family.memberIds, me.id] } },
     });
   },
 
@@ -516,9 +543,18 @@ export const localBackend: Backend = {
     });
   },
 
-  async setCurrency(currency: string) {
+  async setCurrency(currency, rate) {
     const { couple } = requireCouple();
-    updateCouple(couple, { currency });
+    if (couple.currency === currency) return;
+    if (!(rate > 0)) throw new BackendError('errors.generic');
+    const convert = (n: number) => convertAmount(n, rate);
+    updateCouple(couple, {
+      currency,
+      transactions: couple.transactions.map((tx) => ({ ...tx, amount: convert(tx.amount) })),
+      goals: couple.goals.map((g) => ({ ...g, target: convert(g.target) })),
+      recurring: couple.recurring.map((r) => ({ ...r, amount: convert(r.amount) })),
+      requests: couple.requests.map((r) => (r.amount === null ? r : { ...r, amount: convert(r.amount) })),
+    });
   },
 
   async addGoal(goal: Omit<Goal, 'id' | 'createdAt'>) {

@@ -1,6 +1,6 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useRef } from 'react';
-import { Modal, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Linking, Modal, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { makeStyles, useT } from '@/providers/Preferences';
@@ -15,6 +15,16 @@ export function QrScanner({ onClose, onCode }: { onClose: () => void; onCode: (c
   const { t } = useT();
   const [permission, requestPermission] = useCameraPermissions();
   const handled = useRef(false);
+  const asked = useRef(false);
+
+  // Ask for the camera as soon as the scanner opens (once); if it's blocked, the button opens Settings.
+  useEffect(() => {
+    if (permission && !permission.granted && permission.canAskAgain && !asked.current) {
+      asked.current = true;
+      requestPermission();
+    }
+  }, [permission, requestPermission]);
+  const blocked = !!permission && !permission.granted && !permission.canAskAgain;
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -44,10 +54,10 @@ export function QrScanner({ onClose, onCode }: { onClose: () => void; onCode: (c
             <View style={s.frame} />
             {permission && !permission.granted && (
               <View style={{ alignItems: 'center', gap: spacing.md }}>
-                <Text style={s.body}>{t('invite.scanDenied')}</Text>
-                <PressableScale onPress={requestPermission} style={s.grant}>
-                  <Icon name="camera" size={18} color="#0A1F5C" />
-                  <Text style={s.grantText}>{t('invite.grant')}</Text>
+                <Text style={s.body}>{t(blocked ? 'invite.scanBlocked' : 'invite.scanDenied')}</Text>
+                <PressableScale onPress={() => (blocked ? Linking.openSettings().catch(() => {}) : requestPermission())} style={s.grant}>
+                  <Icon name={blocked ? 'settings' : 'camera'} size={18} color="#0A1F5C" />
+                  <Text style={s.grantText}>{t(blocked ? 'notifPrompt.openSettings' : 'invite.grant')}</Text>
                 </PressableScale>
               </View>
             )}
@@ -62,7 +72,14 @@ const useStyles = makeStyles(() => ({
   root: { flex: 1, backgroundColor: '#05080F' },
   overlay: { flex: 1 },
   header: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
-  close: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
+  close: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg, padding: spacing.lg },
   title: { fontFamily: fonts.bold, fontSize: 20, color: '#FFFFFF', textAlign: 'center' },
   frame: { width: 240, height: 240, borderRadius: radius.lg, borderWidth: 3, borderColor: 'rgba(255,255,255,0.9)' },

@@ -1,23 +1,24 @@
 import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
-import { Share, Text, View } from 'react-native';
-import QRCode from 'react-native-qrcode-svg';
+import { Text, View } from 'react-native';
 
 import { makeStyles, useT, useTheme } from '@/providers/Preferences';
 import { backend } from '@/services/backend';
+import { isFamilyCode } from '@/services/types';
 import { useSession } from '@/store/SavingsContext';
 import type { NestKind } from '@/store/types';
 import { fonts, radius, spacing, type } from '@/theme';
-import { inviteUrl, takePendingInvite } from '@/utils/invite';
+import { takePendingInvite } from '@/utils/invite';
 import { useAction } from '@/utils/useAction';
 import { Icon } from './Icon';
+import { InviteSheet } from './InviteSheet';
 import { QrScanner } from './QrScanner';
-import { Sheet } from './Sheet';
 import { Button, ErrorBanner, PressableScale, Segmented, TextField, tap } from './ui';
 
 /**
- * Starts a new nest: a couple (shows the user's code and links with a partner's code or a sample
- * partner) or a named family group. With `addMember`, it only adds someone to the active family.
+ * Starts or joins a nest: a couple (share your code, or enter your partner's) or a family group
+ * (create one with a name, or join with the family's FAM code). Codes can also be scanned as QR.
+ * With `addMember`, it only adds someone to the active family by their personal code.
  */
 export function LinkForm({ onLinked, addMember }: { onLinked?: () => void; addMember?: boolean }) {
   const s = useStyles();
@@ -28,27 +29,32 @@ export function LinkForm({ onLinked, addMember }: { onLinked?: () => void; addMe
   const [copied, setCopied] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [kind, setKind] = useState<NestKind>('couple');
+  // An invite link with a family code opens straight on the family tab.
+  const [kind, setKind] = useState<NestKind>(() => (isFamilyCode(code) ? 'family' : 'couple'));
   const [familyName, setFamilyName] = useState('');
-  const link = useAction(addMember ? backend.addMemberByCode : backend.linkWithCode);
+  const link = useAction((value: string) =>
+    addMember ? backend.addMemberByCode(value) : isFamilyCode(value) ? backend.joinFamily(value) : backend.linkWithCode(value),
+  );
   const demo = useAction(backend.linkDemoPartner);
   const family = useAction(backend.createFamily);
 
   if (!user) return null;
 
+  const done = () => {
+    tap('success');
+    onLinked?.();
+  };
+  const submit = async (value = code) => {
+    if (await link.run(value)) done();
+  };
+  const createFamily = async () => {
+    if (await family.run(familyName)) done();
+  };
   const copy = async () => {
     await Clipboard.setStringAsync(user.code);
     tap('success');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const url = inviteUrl(user.code);
-  const submit = async (value = code) => {
-    if (await link.run(value)) {
-      tap('success');
-      onLinked?.();
-    }
   };
 
   const scanner = scanning && (
@@ -61,24 +67,32 @@ export function LinkForm({ onLinked, addMember }: { onLinked?: () => void; addMe
       }}
     />
   );
-  const codeField = (
+  const codeField = (label: string, placeholder: string) => (
     <TextField
-      label={t(addMember ? 'family.memberCode' : 'link.partnerCode')}
+      label={label}
       icon="users"
       value={code}
       onChangeText={(v) => setCode(v.toUpperCase())}
-      placeholder="NIDO-XXXXX"
+      placeholder={placeholder}
       autoCapitalize="characters"
       autoCorrect={false}
       maxLength={10}
       onSubmitEditing={() => submit()}
     />
   );
+  const scanButton = <Button label={t('invite.scan')} icon="scan" variant="secondary" onPress={() => setScanning(true)} />;
+  const divider = (label: string) => (
+    <View style={s.divider}>
+      <View style={s.line} />
+      <Text style={s.dividerText}>{label}</Text>
+      <View style={s.line} />
+    </View>
+  );
 
   if (addMember) {
     return (
       <View style={{ gap: spacing.md }}>
-        {codeField}
+        {codeField(t('family.memberCode'), 'NIDO-XXXXX')}
         <ErrorBanner message={link.error} />
         <Button
           label={t('family.addCta')}
@@ -87,18 +101,11 @@ export function LinkForm({ onLinked, addMember }: { onLinked?: () => void; addMe
           loading={link.loading}
           disabled={code.trim().length < 5}
         />
-        <Button label={t('invite.scan')} icon="scan" variant="secondary" onPress={() => setScanning(true)} />
+        {scanButton}
         {scanner}
       </View>
     );
   }
-
-  const createFamily = async () => {
-    if (await family.run(familyName)) {
-      tap('success');
-      onLinked?.();
-    }
-  };
 
   const kindSwitch = (
     <Segmented<NestKind>
@@ -139,6 +146,20 @@ export function LinkForm({ onLinked, addMember }: { onLinked?: () => void; addMe
           loading={family.loading}
           disabled={familyName.trim().length < 2}
         />
+
+        {divider(t('family.joinDivider'))}
+        {codeField(t('family.joinCode'), 'FAM-XXXXX')}
+        <ErrorBanner message={link.error} />
+        <Button
+          label={t('family.joinCta')}
+          icon="login"
+          variant="soft"
+          onPress={() => submit()}
+          loading={link.loading}
+          disabled={!isFamilyCode(code)}
+        />
+        {scanButton}
+        {scanner}
       </View>
     );
   }
@@ -156,29 +177,18 @@ export function LinkForm({ onLinked, addMember }: { onLinked?: () => void; addMe
             <Icon name={copied ? 'check' : 'copy'} size={16} color={colors.accent} />
             <Text style={s.codeActionText}>{t(copied ? 'common.copied' : 'common.copy')}</Text>
           </PressableScale>
-          <PressableScale
-            style={s.codeAction}
-            onPress={() => Share.share({ message: t('invite.shareMessage', { url, code: user.code }) }).catch(() => {})}>
-            <Icon name="share" size={16} color={colors.accent} />
-            <Text style={s.codeActionText}>{t('common.share')}</Text>
-          </PressableScale>
           <PressableScale style={s.codeAction} onPress={() => setQrOpen(true)} accessibilityLabel={t('invite.showQr')}>
             <Icon name="qr" size={16} color={colors.accent} />
-            <Text style={s.codeActionText}>QR</Text>
+            <Text style={s.codeActionText}>{t('invite.qrAndShare')}</Text>
           </PressableScale>
         </View>
       </View>
 
-      <View style={s.divider}>
-        <View style={s.line} />
-        <Text style={s.dividerText}>{t('link.or')}</Text>
-        <View style={s.line} />
-      </View>
-
-      {codeField}
+      {divider(t('link.or'))}
+      {codeField(t('link.partnerCode'), 'NIDO-XXXXX')}
       <ErrorBanner message={link.error ?? demo.error} />
       <Button label={t('link.cta')} icon="link" onPress={() => submit()} loading={link.loading} disabled={code.trim().length < 5} />
-      <Button label={t('invite.scan')} icon="scan" variant="secondary" onPress={() => setScanning(true)} />
+      {scanButton}
       <Button
         label={t('link.demo')}
         variant="soft"
@@ -189,16 +199,13 @@ export function LinkForm({ onLinked, addMember }: { onLinked?: () => void; addMe
         loading={demo.loading}
       />
 
-      <Sheet visible={qrOpen} onClose={() => setQrOpen(false)}>
-        <View style={s.qrSheet}>
-          <Text style={s.qrTitle}>{t('invite.qrTitle')}</Text>
-          <Text style={s.qrBody}>{t('invite.qrBody')}</Text>
-          <View style={s.qrBox}>
-            <QRCode value={url} size={210} color="#0A1433" backgroundColor="#FFFFFF" />
-          </View>
-          <Text style={s.qrCode}>{user.code}</Text>
-        </View>
-      </Sheet>
+      <InviteSheet
+        visible={qrOpen}
+        onClose={() => setQrOpen(false)}
+        code={user.code}
+        title={t('invite.qrTitle')}
+        body={t('invite.qrBody')}
+      />
       {scanner}
     </View>
   );
@@ -222,17 +229,6 @@ const useStyles = makeStyles(({ colors }) => ({
   divider: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   line: { flex: 1, height: 1, backgroundColor: colors.border },
   dividerText: { ...type.small, color: colors.textSubtle },
-  qrSheet: { alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.sm },
-  qrTitle: { ...type.h2, color: colors.text },
-  qrBody: { ...type.small, color: colors.textMuted, textAlign: 'center', lineHeight: 19 },
-  qrBox: {
-    padding: spacing.md,
-    backgroundColor: '#FFFFFF',
-    borderRadius: radius.md,
-    marginTop: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
   familyIntro: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -243,5 +239,4 @@ const useStyles = makeStyles(({ colors }) => ({
   },
   familyIcon: { width: 46, height: 46, borderRadius: 16, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   familyText: { ...type.small, color: colors.text, flex: 1, lineHeight: 19 },
-  qrCode: { fontFamily: fonts.extrabold, fontSize: 20, color: colors.text, letterSpacing: 2, marginTop: spacing.sm },
 }));

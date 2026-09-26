@@ -1,3 +1,4 @@
+import { formatMoney } from '@/utils/format';
 import type { IconName } from '@/components/Icon';
 import type { TranslationKey } from '@/i18n/es';
 import type { Couple } from '@/store/types';
@@ -45,6 +46,28 @@ export const ACHIEVEMENTS: AchievementDef[] = [
 export const achievementTitle = (id: AchievementId) => `ach.${id}` as TranslationKey;
 export const achievementDesc = (id: AchievementId) => `ach.${id}Desc` as TranslationKey;
 
+/**
+ * Savings milestones per currency, roughly equivalent in value (1,000 / 10,000 / 100,000 MXN), so
+ * a nest in COP doesn't unlock them instantly and one in USD isn't out of reach.
+ */
+const MILESTONES: Record<string, readonly [number, number, number]> = {
+  MXN: [1_000, 10_000, 100_000],
+  USD: [50, 500, 5_000],
+  EUR: [50, 500, 5_000],
+  COP: [200_000, 2_000_000, 20_000_000],
+  ARS: [50_000, 500_000, 5_000_000],
+  CLP: [50_000, 500_000, 5_000_000],
+  PEN: [200, 2_000, 20_000],
+  GTQ: [400, 4_000, 40_000],
+};
+export const balanceMilestones = (currency: string) => MILESTONES[currency] ?? MILESTONES.MXN;
+
+/** Params for an achievement's description (the milestone amount, formatted in the nest's currency). */
+export function achievementParams(id: AchievementId, currency: string): Record<string, string> {
+  const index = { saved1k: 0, saved10k: 1, saved100k: 2 }[id as 'saved1k'];
+  return index === undefined ? {} : { amount: formatMoney(balanceMilestones(currency)[index], currency, { compact: true }) };
+}
+
 export const XP_PER_DEPOSIT = 10;
 export const XP_PER_GOAL = 100;
 /** XP needed to reach each stage: egg, hatchling, chick, bird, legend. */
@@ -82,6 +105,7 @@ export function computeProgress(couple: Couple, now = new Date()): Progress {
   };
 
   // Walk the history once, unlocking achievements at the moment they were earned.
+  const milestones = balanceMilestones(couple.currency);
   let balance = 0;
   let deposits = 0;
   const depositors = new Set<string>();
@@ -116,9 +140,9 @@ export function computeProgress(couple: Couple, now = new Date()): Progress {
       }
     }
 
-    if (balance >= 1_000) unlock('saved1k', tx.date);
-    if (balance >= 10_000) unlock('saved10k', tx.date);
-    if (balance >= 100_000) unlock('saved100k', tx.date);
+    if (balance >= milestones[0]) unlock('saved1k', tx.date);
+    if (balance >= milestones[1]) unlock('saved10k', tx.date);
+    if (balance >= milestones[2]) unlock('saved100k', tx.date);
 
     const goal = tx.goalId ? couple.goals.find((g) => g.id === tx.goalId) : undefined;
     if (goal && !completed.has(goal.id) && (savedPerGoal.get(goal.id) ?? 0) >= goal.target) {
@@ -167,5 +191,15 @@ export function computeProgress(couple: Couple, now = new Date()): Progress {
 }
 
 export const STAGE_KEYS: TranslationKey[] = ['pet.stage0', 'pet.stage1', 'pet.stage2', 'pet.stage3', 'pet.stage4'];
-export const MOOD_KEYS: Record<Mood, TranslationKey> = { happy: 'pet.moodHappy', calm: 'pet.moodCalm', sleepy: 'pet.moodSleepy', sad: 'pet.moodSad' };
-export const SAY_KEYS: Record<Mood, TranslationKey> = { happy: 'pet.sayHappy', calm: 'pet.sayCalm', sleepy: 'pet.saySleepy', sad: 'pet.saySad' };
+export const MOOD_KEYS: Record<Mood, TranslationKey> = {
+  happy: 'pet.moodHappy',
+  calm: 'pet.moodCalm',
+  sleepy: 'pet.moodSleepy',
+  sad: 'pet.moodSad',
+};
+export const SAY_KEYS: Record<Mood, TranslationKey> = {
+  happy: 'pet.sayHappy',
+  calm: 'pet.sayCalm',
+  sleepy: 'pet.saySleepy',
+  sad: 'pet.saySad',
+};
