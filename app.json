@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Nido",
-    "slug": "nido",
+    "slug": "nido-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -59,6 +59,12 @@
         }
       ]
     ],
-    "scheme": "nido"
+    "scheme": "nido",
+    "owner": "diegoasp01s-team",
+    "extra": {
+      "eas": {
+        "projectId": "7e1f58c5-6b5b-4cae-a67a-b7b3bc4d81af"
+      }
+    }
   }
 }
