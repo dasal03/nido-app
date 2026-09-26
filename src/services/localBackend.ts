@@ -1,15 +1,13 @@
 /**
  * Local backend: accounts, sessions, couple linking and savings data, persisted on the device.
- *
- * Screens only talk to this module, so it can be swapped for a real server (Supabase, Firebase…)
- * to link accounts across different phones, keeping the same function signatures.
+ * Used when Supabase isn't configured (no EXPO_PUBLIC_SUPABASE_URL), e.g. for offline demos.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 
-import type { TranslationKey } from '@/i18n/es';
 import { buildDemoData } from '@/store/seed';
 import type { Couple, Frequency, Goal, RecurringRule, Transaction, User } from '@/store/types';
+import { BackendError, advanceDate, checkPhone, checkRegistration, checkUsername, EMAIL_RE, normalizeCode, normalizeUsername, type Backend } from './types';
 
 const STORAGE_KEY = 'nido/db/v2';
 const LEGACY_KEYS = ['nido/state/v1'];
@@ -20,25 +18,16 @@ interface UserRecord extends User {
   salt: string;
 }
 
-export interface Db {
+interface LocalDb {
   users: Record<string, UserRecord>;
   couples: Record<string, Couple>;
   sessionUserId: string | null;
 }
 
-type ErrorKey = Extract<TranslationKey, `errors.${string}`>;
-
-/** Error with a translation key, so the UI can show it in the user's language. */
-export class BackendError extends Error {
-  constructor(public key: ErrorKey) {
-    super(key);
-  }
-}
-
-let db: Db = { users: {}, couples: {}, sessionUserId: null };
+let db: LocalDb = { users: {}, couples: {}, sessionUserId: null };
 const listeners = new Set<() => void>();
 
-function commit(next: Db) {
+function commit(next: LocalDb) {
   db = next;
   listeners.forEach((l) => l());
   AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(db)).catch(() => {});
@@ -133,35 +122,10 @@ function alreadyLinked(a: User, b: User) {
   return a.coupleIds.some((id) => b.coupleIds.includes(id) && !db.couples[id]?.archivedAt);
 }
 
-/** Next occurrence of a recurring date, never earlier than tomorrow (skips missed periods). */
-export function advanceDate(iso: string, frequency: Frequency) {
-  const d = new Date(iso);
-  const now = new Date();
-  do {
-    if (frequency === 'weekly') d.setDate(d.getDate() + 7);
-    else if (frequency === 'biweekly') d.setDate(d.getDate() + 14);
-    else d.setMonth(d.getMonth() + 1);
-  } while (d <= now);
-  return d.toISOString();
-}
-
-const normalizeEmail = (email: string) => email.trim().toLowerCase();
-const normalizeUsername = (username: string) => username.trim().toLowerCase().replace(/^@/, '');
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const USERNAME_RE = /^[a-z0-9._]{3,20}$/;
-
 function validUsername(raw: string, exceptId?: string) {
-  const username = normalizeUsername(raw);
-  if (!USERNAME_RE.test(username)) throw new BackendError('errors.usernameInvalid');
+  const username = checkUsername(raw);
   if (Object.values(db.users).some((u) => u.username === username && u.id !== exceptId)) throw new BackendError('errors.usernameTaken');
   return username;
-}
-
-function validPhone(raw: string) {
-  const phone = raw.trim();
-  const digits = phone.replace(/\D/g, '');
-  if (!/^\+?[\d\s()-]+$/.test(phone) || digits.length < 7 || digits.length > 15) throw new BackendError('errors.phoneInvalid');
-  return phone;
 }
 
 /** Derives a unique username from an email, for accounts created before usernames existed. */
@@ -173,7 +137,7 @@ function usernameFromEmail(email: string, taken: Set<string>) {
   return candidate;
 }
 
-export const backend = {
+export const localBackend: Backend = {
   async init() {
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
@@ -214,15 +178,10 @@ export const backend = {
   getSnapshot: () => db,
 
   async register(input: { name: string; username: string; email: string; phone: string; password: string }) {
-    const name = input.name.trim();
-    const email = normalizeEmail(input.email);
-    if (!name) throw new BackendError('errors.nameRequired');
-    const username = validUsername(input.username);
-    if (!EMAIL_RE.test(email)) throw new BackendError('errors.invalidEmail');
+    const { name, username, email, phone, password } = checkRegistration(input);
+    validUsername(username);
     if (Object.values(db.users).some((u) => u.email === email)) throw new BackendError('errors.emailTaken');
-    const phone = validPhone(input.phone);
-    if (input.password.length < 6) throw new BackendError('errors.weakPassword');
-    const user = await createUser({ name, username, email, phone, password: input.password });
+    const user = await createUser({ name, username, email, phone, password });
     commit({ ...db, users: { ...db.users, [user.id]: user }, sessionUserId: user.id });
   },
 
@@ -245,14 +204,13 @@ export const backend = {
     const next = { ...patch };
     if (next.name !== undefined && !next.name.trim()) throw new BackendError('errors.nameRequired');
     if (next.username !== undefined) next.username = validUsername(next.username, user.id);
-    if (next.phone !== undefined) next.phone = validPhone(next.phone);
+    if (next.phone !== undefined) next.phone = checkPhone(next.phone);
     commit({ ...db, users: { ...db.users, [user.id]: { ...user, ...next } } });
   },
 
   async linkWithCode(rawCode: string) {
     const me = requireUser();
-    let code = rawCode.trim().toUpperCase().replace(/\s+/g, '');
-    if (code && !code.startsWith('NIDO-')) code = `NIDO-${code.replace(/^NIDO/, '')}`;
+    const code = normalizeCode(rawCode);
     if (code === me.code) throw new BackendError('errors.ownCode');
     const partner = Object.values(db.users).find((u) => u.code === code);
     if (!partner) throw new BackendError('errors.codeNotFound');

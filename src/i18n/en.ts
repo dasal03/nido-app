@@ -42,6 +42,8 @@ export const en: Record<TranslationKey, string> = {
   'auth.usernamePlaceholder': 'diego',
   'auth.phone': 'Phone',
   'auth.phonePlaceholder': '+1 555 123 4567',
+  'errors.emailNotConfirmed': 'Confirm your email before signing in (check your inbox).',
+  'errors.confirmEmail': 'Account created! We sent you an email to confirm it; then sign in.',
   'errors.alreadyLinkedWith': 'You already share a nest with that person.',
   'nests.title': 'My nests',
   'nests.switcherTitle': 'Your nests',

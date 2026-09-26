@@ -40,6 +40,8 @@ export const es = {
   'auth.usernamePlaceholder': 'diego',
   'auth.phone': 'Teléfono',
   'auth.phonePlaceholder': '+52 55 1234 5678',
+  'errors.emailNotConfirmed': 'Confirma tu correo antes de iniciar sesión (revisa tu bandeja de entrada).',
+  'errors.confirmEmail': '¡Cuenta creada! Te enviamos un correo para confirmarla; después inicia sesión.',
   'errors.alreadyLinkedWith': 'Ya tienes un nido con esa persona.',
   'nests.title': 'Mis nidos',
   'nests.switcherTitle': 'Tus nidos',
